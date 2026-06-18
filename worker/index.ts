@@ -216,7 +216,7 @@ async function wipeSheets(spreadsheetId: string, serviceAccountKey: string): Pro
 // ─── Apify Proxy ────────────────────────────────────────────────────────────
 async function runApifyScraper(apiToken: string, actorId: string, input: Record<string, unknown>): Promise<unknown> {
   const runRes = await fetch(
-    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${apiToken}&timeout=300`,
+    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${apiToken}&waitForFinish=300`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
