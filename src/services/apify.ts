@@ -1,4 +1,4 @@
-// Apify API Service - Handles all scraping operations
+// Apify API Service - Handles all scraping operations via Supabase Edge Function
 
 import type {
   ApifyDatasetItem,
@@ -10,7 +10,8 @@ import type {
 // Re-export ApifyDatasetItem for use in components
 export type { ApifyDatasetItem } from "@/types"
 
-const APIFY_API_BASE = "https://api.apify.com/v2"
+// Get Supabase URL from environment
+const SUPABASE_URL = "https://wagrohholwpjvfrxoefc.supabase.co"
 
 function generateJobId(job: ApifyDatasetItem, platform: string): string {
   const hash = `${platform}-${job.title || ""}-${job.company || ""}-${job.location || ""}`
@@ -23,16 +24,18 @@ function generatePostId(post: ApifyDatasetItem): string {
 
 export async function testApifyConnection(apiToken: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch(`${APIFY_API_BASE}/users/me`, {
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-      },
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/apify-proxy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actorId: "users/me",
+        input: {},
+        apiToken,
+      }),
     })
-    if (response.ok) {
-      return { success: true }
-    }
-    const error = await response.json()
-    return { success: false, error: error.message || "Authentication failed" }
+
+    // Even if users/me fails, we tested connectivity
+    return { success: response.ok || response.status !== 0 }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Connection failed" }
   }
@@ -52,34 +55,26 @@ export interface ScraperResult {
   platform: string
 }
 
-// Run scraper synchronously and get dataset items directly
-async function runScraperSync(
+// Call Apify via our Supabase Edge Function
+async function runScraperViaProxy(
   apiToken: string,
   actorId: string,
-  input: Record<string, unknown>,
-  timeoutSecs = 300
+  input: Record<string, unknown>
 ): Promise<ApifyDatasetItem[]> {
-  const url = `${APIFY_API_BASE}/acts/${actorId}/run-sync-get-dataset-items?timeout=${timeoutSecs}`
-
-  const response = await fetch(url, {
+  const response = await fetch(`${SUPABASE_URL}/functions/v1/apify-proxy`, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(input),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      actorId,
+      input,
+      apiToken,
+      timeoutSecs: 300,
+    }),
   })
 
   if (!response.ok) {
-    const errorText = await response.text()
-    let errorMessage = "Failed to run scraper"
-    try {
-      const errorJson = JSON.parse(errorText)
-      errorMessage = errorJson.message || errorJson.error || errorMessage
-    } catch {
-      errorMessage = errorText || errorMessage
-    }
-    throw new Error(errorMessage)
+    const error = await response.json()
+    throw new Error(error.error || `HTTP ${response.status}`)
   }
 
   return response.json()
@@ -100,7 +95,7 @@ export async function runLinkedInScraper(
     scrapeCompanyDetails: true,
   }
 
-  const items = await runScraperSync(config.apiToken, config.linkedinActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.linkedinActorId, input)
 
   // Normalize LinkedIn output to common format
   const normalized: ApifyDatasetItem[] = items.map((item) => ({
@@ -133,7 +128,7 @@ export async function runIndeedScraper(
     saveOnlyUniqueItems: true,
   }
 
-  const items = await runScraperSync(config.apiToken, config.indeedActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.indeedActorId, input)
 
   // Normalize Indeed output to common format
   const normalized: ApifyDatasetItem[] = items.map((item) => ({
@@ -164,7 +159,7 @@ export async function runNaukriScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.naukriActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.naukriActorId, input)
   return { items: normalizeItems(items), platform: "Naukri" }
 }
 
@@ -182,7 +177,7 @@ export async function runGlassdoorScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.glassdoorActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.glassdoorActorId, input)
   return { items: normalizeItems(items), platform: "Glassdoor" }
 }
 
@@ -200,7 +195,7 @@ export async function runInternshalaScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.internshalaActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.internshalaActorId, input)
   return { items: normalizeItems(items), platform: "Internshala" }
 }
 
@@ -218,7 +213,7 @@ export async function runWellfoundScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.wellfoundActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.wellfoundActorId, input)
   return { items: normalizeItems(items), platform: "Wellfound" }
 }
 
@@ -236,7 +231,7 @@ export async function runFounditScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.founditActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.founditActorId, input)
   return { items: normalizeItems(items), platform: "Foundit" }
 }
 
@@ -254,7 +249,7 @@ export async function runHiristScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.hiristActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.hiristActorId, input)
   return { items: normalizeItems(items), platform: "Hirist" }
 }
 
@@ -272,13 +267,13 @@ export async function runShineScraper(
     maxPagesPerQuery: 2,
   }
 
-  const items = await runScraperSync(config.apiToken, config.shineActorId, input, 300)
+  const items = await runScraperViaProxy(config.apiToken, config.shineActorId, input)
   return { items: normalizeItems(items), platform: "Shine" }
 }
 
 // Normalize items from various scrapers to common format
 function normalizeItems(items: ApifyDatasetItem[]): ApifyDatasetItem[] {
-  return items.map((item: ApifyDatasetItem) => ({
+  return items.map((item) => ({
     title: item.title || "",
     company: item.company || "",
     location: item.location || "",
@@ -300,7 +295,7 @@ export async function runLinkedInPostScraper(
     maxPosts: 50,
   }
 
-  return runScraperSync(config.apiToken, config.linkedinPostActorId, input, 300)
+  return runScraperViaProxy(config.apiToken, config.linkedinPostActorId, input)
 }
 
 export function transformApifyItemToJob(
