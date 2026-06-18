@@ -68,6 +68,8 @@ export interface ApifyPayload {
 
 export interface ApifyConfig {
   apiToken: string
+  hasToken?: boolean
+  canManageSecrets?: boolean
   linkedinActorId: string
   indeedActorId: string
   naukriActorId: string

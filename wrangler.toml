@@ -9,9 +9,11 @@ not_found_handling = "single-page-application"
 [[d1_databases]]
 binding = "DB"
 database_name = "huntsync-db"
-database_id = "PLACEHOLDER_DATABASE_ID"
+database_id = "c7e5e19d-71c1-4df6-acee-c9e6a31ff03d"
 
 [vars]
 # Non-secret config values only
-# Secrets (APIFY_TOKEN, GCP_SERVICE_ACCOUNT_KEY, GCP_SPREADSHEET_ID) 
+CF_ACCOUNT_ID = "2fd4826d0cab77104d075279de4397f1"
+# Secrets (APIFY_TOKEN, CF_API_TOKEN, GCP_SERVICE_ACCOUNT_KEY, GCP_SPREADSHEET_ID) 
 # are set via: wrangler secret put <NAME>
+# or from the dashboard UI (for APIFY_TOKEN, once CF_API_TOKEN is set)

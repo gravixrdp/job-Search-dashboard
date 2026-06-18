@@ -98,68 +98,40 @@ export async function testGCPConnection(serviceAccountKey: string, spreadsheetId
 export function clearCachedConfig(): void {
   cachedConfig = null
 }
-// Configuration Store - Manages API keys and settings in localStorage
 
-import type { AppConfig, ApifyConfig, GCPConfig } from "@/types"
+// ─── Apify Token Management ────────────────────────────────────────────────
 
-const STORAGE_KEY = "huntsync_config"
-
-const defaultApifyConfig: ApifyConfig = {
-  apiToken: "",
-  linkedinActorId: "curious_coder/linkedin-jobs-scraper",
-  indeedActorId: "misceres/indeed-scraper",
-  naukriActorId: "accurate_workstation/naukri-jobs-scraper-free",
-  glassdoorActorId: "fatihai-tools/glassdoor-jobs",
-  internshalaActorId: "unfenced-group/internshala-scraper",
-  wellfoundActorId: "blackfalcondata/wellfound-scraper",
-  founditActorId: "codingfrontend/foundit-jobs-scraper",
-  hiristActorId: "logiover/hirist-tech-scraper",
-  shineActorId: "unfenced-group/shine-scraper",
-  linkedinPostActorId: "apify/linkedin-post-scraper",
-}
-
-const defaultGCPConfig: GCPConfig = {
-  serviceAccountKey: "",
-  spreadsheetId: "",
-}
-
-export function getConfig(): AppConfig {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      const parsed = JSON.parse(stored)
-      return {
-        apify: { ...defaultApifyConfig, ...parsed.apify },
-        gcp: { ...defaultGCPConfig, ...parsed.gcp },
-      }
-    }
-  } catch (e) {
-    console.error("Failed to parse config:", e)
+export async function saveApifyToken(token: string): Promise<{
+  success: boolean
+  d1: boolean
+  cfSecret: boolean
+  cfError?: string
+}> {
+  const response = await fetch("/api/apify/token", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  })
+  if (!response.ok) {
+    const err = await response.json() as { error?: string }
+    throw new Error(err.error || "Failed to save token")
   }
-  return {
-    apify: defaultApifyConfig,
-    gcp: defaultGCPConfig,
+  // Clear cache so next load reflects the change
+  cachedConfig = null
+  return (await response.json()) as { success: boolean; d1: boolean; cfSecret: boolean; cfError?: string }
+}
+
+export async function removeApifyToken(): Promise<{
+  success: boolean
+  d1: boolean
+  cfSecret: boolean
+  cfError?: string
+}> {
+  const response = await fetch("/api/apify/token", { method: "DELETE" })
+  if (!response.ok) {
+    const err = await response.json() as { error?: string }
+    throw new Error(err.error || "Failed to remove token")
   }
-}
-
-export function saveConfig(config: AppConfig): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config))
-}
-
-export function updateApifyConfig(updates: Partial<ApifyConfig>): ApifyConfig {
-  const config = getConfig()
-  const newApifyConfig = { ...config.apify, ...updates }
-  saveConfig({ ...config, apify: newApifyConfig })
-  return newApifyConfig
-}
-
-export function updateGCPConfig(updates: Partial<GCPConfig>): GCPConfig {
-  const config = getConfig()
-  const newGCPConfig = { ...config.gcp, ...updates }
-  saveConfig({ ...config, gcp: newGCPConfig })
-  return newGCPConfig
-}
-
-export function clearConfig(): void {
-  localStorage.removeItem(STORAGE_KEY)
+  cachedConfig = null
+  return (await response.json()) as { success: boolean; d1: boolean; cfSecret: boolean; cfError?: string }
 }

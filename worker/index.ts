@@ -1,10 +1,14 @@
 // HuntSync AI — Cloudflare Worker (Full-Stack)
 // Serves the React SPA and handles all API routes with D1 + Google Sheets backup
 
+import type { D1Database, ExecutionContext } from "cloudflare:workers"
+
 export interface Env {
   DB: D1Database
   ASSETS: { fetch: typeof fetch }
   APIFY_TOKEN: string
+  CF_ACCOUNT_ID: string
+  CF_API_TOKEN: string
   GCP_SERVICE_ACCOUNT_KEY: string
   GCP_SPREADSHEET_ID: string
 }
@@ -23,6 +27,8 @@ const DEFAULT_ACTOR_IDS: Record<string, string> = {
   linkedinPostActorId: "apify/linkedin-post-scraper",
 }
 
+const WORKER_SCRIPT_NAME = "huntsync-ai"
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
@@ -37,6 +43,65 @@ function error(msg: string, status = 400): Response {
 
 async function getBody<T>(req: Request): Promise<T> {
   return (await req.json()) as T
+}
+
+// Get the effective Apify token: D1 override takes priority over env secret
+async function getApifyToken(env: Env): Promise<string> {
+  try {
+    const row = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("apify_token").first() as { value: string } | null
+    if (row?.value) return row.value
+  } catch { /* ignore */ }
+  return env.APIFY_TOKEN || ""
+}
+
+// Sync a value to a Cloudflare Worker secret via the Cloudflare API
+async function syncCFSecret(env: Env, secretName: string, secretValue: string): Promise<{ success: boolean; error?: string }> {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
+    return { success: false, error: "CF_API_TOKEN and CF_ACCOUNT_ID must be configured. Set CF_API_TOKEN as a secret via wrangler or Cloudflare Dashboard." }
+  }
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${WORKER_SCRIPT_NAME}/secrets`,
+      {
+        method: "PUT",
+        headers: {
+          "Authorization": `Bearer ${env.CF_API_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: secretName, text: secretValue }),
+      }
+    )
+    if (!res.ok) {
+      const err = await res.json() as { errors?: Array<{ message: string }> }
+      return { success: false, error: err.errors?.[0]?.message || `CF API returned ${res.status}` }
+    }
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "CF API call failed" }
+  }
+}
+
+// Remove a Cloudflare Worker secret via the Cloudflare API
+async function removeCFSecret(env: Env, secretName: string): Promise<{ success: boolean; error?: string }> {
+  if (!env.CF_API_TOKEN || !env.CF_ACCOUNT_ID) {
+    return { success: false, error: "CF_API_TOKEN and CF_ACCOUNT_ID must be configured." }
+  }
+  try {
+    const res = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CF_ACCOUNT_ID}/workers/scripts/${WORKER_SCRIPT_NAME}/secrets/${secretName}`,
+      {
+        method: "DELETE",
+        headers: { "Authorization": `Bearer ${env.CF_API_TOKEN}` },
+      }
+    )
+    if (!res.ok) {
+      const err = await res.json() as { errors?: Array<{ message: string }> }
+      return { success: false, error: err.errors?.[0]?.message || `CF API returned ${res.status}` }
+    }
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "CF API call failed" }
+  }
 }
 
 // ─── Google Sheets Server-Side Auth (RS256 JWT via Web Crypto) ──────────────
@@ -178,19 +243,20 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
 
   // ── Apify Routes ────────────────────────────────────────────────────────
   if (path === "/api/apify/test" && method === "POST") {
-    const token = env.APIFY_TOKEN
-    if (!token) return error("APIFY_TOKEN secret not set", 500)
+    const token = await getApifyToken(env)
+    if (!token) return error("Apify API token not configured. Add it in the dashboard Settings.", 500)
     try {
-      await fetch(`https://api.apify.com/v2/users/me?token=${token}`)
-      return json({ success: true })
+      const res = await fetch(`https://api.apify.com/v2/users/me?token=${token}`)
+      if (res.ok) return json({ success: true })
+      return json({ success: false, error: `Apify returned ${res.status} — check your token` })
     } catch (e) {
       return json({ success: false, error: e instanceof Error ? e.message : "Connection failed" })
     }
   }
 
   if (path === "/api/apify/run" && method === "POST") {
-    const token = env.APIFY_TOKEN
-    if (!token) return error("APIFY_TOKEN secret not set", 500)
+    const token = await getApifyToken(env)
+    if (!token) return error("Apify API token not configured. Add it in the dashboard Settings.", 500)
     try {
       const body = await getBody<{ actorId: string; input: Record<string, unknown> }>(req)
       const actorId = body.actorId || DEFAULT_ACTOR_IDS[body.actorId] || body.actorId
@@ -198,6 +264,51 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
       return json(items)
     } catch (e) {
       return error(e instanceof Error ? e.message : "Scraper failed", 500)
+    }
+  }
+
+  // ── Apify Token Management ───────────────────────────────────────────────
+  if (path === "/api/apify/token" && method === "PUT") {
+    try {
+      const body = await getBody<{ token: string }>(req)
+      if (!body.token?.trim()) return error("Token cannot be empty")
+
+      // 1. Save to D1 (immediate availability)
+      await env.DB.prepare(
+        `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      ).bind("apify_token", body.token.trim(), new Date().toISOString()).run()
+
+      // 2. Sync to Cloudflare secret (best-effort)
+      const cfResult = await syncCFSecret(env, "APIFY_TOKEN", body.token.trim())
+
+      return json({
+        success: true,
+        d1: true,
+        cfSecret: cfResult.success,
+        cfError: cfResult.error,
+      })
+    } catch (e) {
+      return error(e instanceof Error ? e.message : "Failed to save token", 500)
+    }
+  }
+
+  if (path === "/api/apify/token" && method === "DELETE") {
+    try {
+      // 1. Remove from D1
+      await env.DB.prepare("DELETE FROM config WHERE key = ?").bind("apify_token").run()
+
+      // 2. Remove from Cloudflare secrets (best-effort)
+      const cfResult = await removeCFSecret(env, "APIFY_TOKEN")
+
+      return json({
+        success: true,
+        d1: true,
+        cfSecret: cfResult.success,
+        cfError: cfResult.error,
+      })
+    } catch (e) {
+      return error(e instanceof Error ? e.message : "Failed to remove token", 500)
     }
   }
 
@@ -343,8 +454,18 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
       }
       // Merge with default actor IDs
       const actorIds = config.apify_actor_ids ? JSON.parse(config.apify_actor_ids) : {}
+      // Get effective Apify token (D1 or env)
+      const effectiveToken = await getApifyToken(env)
+      const hasToken = !!effectiveToken
+      // Check if CF_API_TOKEN is configured for secret management
+      const canManageSecrets = !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID)
       return json({
-        apify: { apiToken: env.APIFY_TOKEN ? "***" : "", ...DEFAULT_ACTOR_IDS, ...actorIds },
+        apify: {
+          apiToken: hasToken ? "***" : "",
+          hasToken,
+          canManageSecrets,
+          ...DEFAULT_ACTOR_IDS, ...actorIds
+        },
         gcp: {
           serviceAccountKey: config.gcp_service_account_key || "",
           spreadsheetId: config.gcp_spreadsheet_id || "",
