@@ -17,7 +17,7 @@ import { Field, FieldLabel, FieldDescription } from "@/components/ui/field"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 import type { LinkedInHiringPost, PostStatus } from "@/types"
-import { getConfig } from "@/services/config"
+import { getConfig, loadConfigFromServer } from "@/services/config"
 import { runLinkedInPostScraper, transformApifyItemToLinkedInPost, buildBooleanSearchQuery } from "@/services/apify"
 import { appendLinkedInPosts, getAllLinkedInPosts, updatePostStatus } from "@/services/google-sheets"
 
@@ -40,17 +40,13 @@ export function SocialListeningTab() {
   const [isScraping, setIsScraping] = useState(false)
 
   useEffect(() => {
-    loadPosts()
+    loadConfigFromServer().then(() => loadPosts())
   }, [])
 
   async function loadPosts() {
-    const config = getConfig()
-    if (!config.gcp.spreadsheetId || !config.gcp.serviceAccountKey) {
-      return
-    }
     setIsLoading(true)
     try {
-      const loadedPosts = await getAllLinkedInPosts(config.gcp)
+      const loadedPosts = await getAllLinkedInPosts()
       setPosts(loadedPosts)
     } catch (e) {
       console.error("Failed to load posts:", e)
@@ -61,8 +57,8 @@ export function SocialListeningTab() {
 
   async function triggerSocialScraper() {
     const config = getConfig()
-    if (!config.apify.apiToken) {
-      toast.error("Apify API token not configured. Please set it in Configuration tab.")
+    if (!config.apify.linkedinPostActorId) {
+      toast.error("Apify actors not configured. Please set them in Configuration tab.")
       return
     }
 
@@ -77,13 +73,8 @@ export function SocialListeningTab() {
       // Filter to posts from last 7 days
       const recentPosts = transformedPosts // In real impl, filter by date
 
-      if (config.gcp.spreadsheetId && config.gcp.serviceAccountKey) {
-        const added = await appendLinkedInPosts(config.gcp, recentPosts)
-        toast.success(`Added ${added} new hiring posts`)
-      } else {
-        setPosts((prev) => [...prev, ...recentPosts])
-        toast.success(`Found ${recentPosts.length} hiring posts`)
-      }
+      const added = await appendLinkedInPosts(recentPosts)
+      toast.success(`Added ${added} new hiring posts`)
 
       await loadPosts()
     } catch (e) {
@@ -95,17 +86,12 @@ export function SocialListeningTab() {
   }
 
   async function handleStatusChange(postId: string, newStatus: PostStatus) {
-    const config = getConfig()
-    if (config.gcp.spreadsheetId && config.gcp.serviceAccountKey) {
-      try {
-        await updatePostStatus(config.gcp, postId, newStatus)
-        setPosts(posts.map((post) => (post.post_id === postId ? { ...post, status: newStatus } : post)))
-        toast.success("Status updated")
-      } catch (e) {
-        toast.error("Failed to update status")
-      }
-    } else {
+    try {
+      await updatePostStatus(postId, newStatus)
       setPosts(posts.map((post) => (post.post_id === postId ? { ...post, status: newStatus } : post)))
+      toast.success("Status updated")
+    } catch (e) {
+      toast.error("Failed to update status")
     }
   }
 

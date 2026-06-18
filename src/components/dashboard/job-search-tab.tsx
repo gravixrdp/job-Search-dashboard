@@ -26,7 +26,7 @@ import { Field, FieldLabel } from "@/components/ui/field"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 import type { Job, SearchFilter, JobType, ApplicationStatus, SourcePlatform, ExperienceLevel } from "@/types"
-import { getConfig } from "@/services/config"
+import { getConfig, loadConfigFromServer } from "@/services/config"
 import { runLinkedInScraper, runIndeedScraper, runNaukriScraper, runGlassdoorScraper, runInternshalaScraper, runWellfoundScraper, runFounditScraper, runHiristScraper, runShineScraper, transformApifyItemToJob, type ApifyDatasetItem } from "@/services/apify"
 import { appendJobs, getAllJobs, updateJobStatus } from "@/services/google-sheets"
 
@@ -84,17 +84,13 @@ export function JobSearchTab() {
   const [customLocation, setCustomLocation] = useState("")
 
   useEffect(() => {
-    loadJobs()
+    loadConfigFromServer().then(() => loadJobs())
   }, [])
 
   async function loadJobs() {
-    const config = getConfig()
-    if (!config.gcp.spreadsheetId || !config.gcp.serviceAccountKey) {
-      return
-    }
     setIsLoading(true)
     try {
-      const loadedJobs = await getAllJobs(config.gcp)
+      const loadedJobs = await getAllJobs()
       setJobs(loadedJobs)
     } catch (e) {
       console.error("Failed to load jobs:", e)
@@ -159,8 +155,8 @@ export function JobSearchTab() {
 
   async function triggerScrapers(platforms: string[]) {
     const config = getConfig()
-    if (!config.apify.apiToken) {
-      toast.error("Apify API token not configured. Please set it in Configuration tab.")
+    if (!config.apify.linkedinActorId) {
+      toast.error("Apify actors not configured. Please set them in Configuration tab.")
       return
     }
 
@@ -205,16 +201,9 @@ export function JobSearchTab() {
         result = await scraper()
         const transformedJobs = result.items.map((item) => transformApifyItemToJob(item, platform))
 
-        // Check if GCP is configured
-        if (config.gcp.spreadsheetId && config.gcp.serviceAccountKey) {
-          const added = await appendJobs(config.gcp, transformedJobs)
-          totalAdded += added
-          toast.success(`${platform}: Added ${added} new jobs`)
-        } else {
-          // Just show in local state
-          setJobs((prev) => [...prev, ...transformedJobs])
-          toast.success(`${platform}: Found ${transformedJobs.length} jobs`)
-        }
+        const added = await appendJobs(transformedJobs)
+        totalAdded += added
+        toast.success(`${platform}: Added ${added} new jobs`)
       } catch (e) {
         const error = e instanceof Error ? e.message : "Unknown error"
         toast.error(`${platform} scraper failed: ${error}`)
@@ -230,17 +219,12 @@ export function JobSearchTab() {
   }
 
   async function handleStatusChange(jobId: string, newStatus: ApplicationStatus) {
-    const config = getConfig()
-    if (config.gcp.spreadsheetId && config.gcp.serviceAccountKey) {
-      try {
-        await updateJobStatus(config.gcp, jobId, newStatus)
-        setJobs(jobs.map((job) => (job.job_id === jobId ? { ...job, application_status: newStatus } : job)))
-        toast.success("Status updated")
-      } catch (e) {
-        toast.error("Failed to update status")
-      }
-    } else {
+    try {
+      await updateJobStatus(jobId, newStatus)
       setJobs(jobs.map((job) => (job.job_id === jobId ? { ...job, application_status: newStatus } : job)))
+      toast.success("Status updated")
+    } catch (e) {
+      toast.error("Failed to update status")
     }
   }
 
