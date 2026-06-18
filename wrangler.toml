@@ -1,0 +1,16 @@
+name = "huntsync-ai"
+main = "worker/index.ts"
+compatibility_date = "2025-06-18"
+
+[assets]
+directory = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "huntsync-db"
+database_id = "PLACEHOLDER_DATABASE_ID"
+
+[vars]
+# Non-secret config values only
+# Secrets (APIFY_TOKEN, GCP_SERVICE_ACCOUNT_KEY, GCP_SPREADSHEET_ID) 
+# are set via: wrangler secret put <NAME>

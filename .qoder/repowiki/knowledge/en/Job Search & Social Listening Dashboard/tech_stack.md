@@ -1,0 +1,5 @@
+- **Build & Framework**: Vite 7 with React 19 and TypeScript.
+- **Styling**: Tailwind CSS 4 with `tailwindcss-animate` and `class-variance-authority` for variant management.
+- **UI Components**: Radix UI primitives via `shadcn/ui` (configured in `components.json`).
+- **External Integrations**: Apify Client for web scraping orchestration; Google APIs (`googleapis`) for Sheets integration; Supabase Edge Functions as a CORS-friendly proxy for Apify actors.
+- **State & Forms**: React Hook Form with Zod resolvers for type-safe form validation; `next-themes` for dark/light mode toggling.

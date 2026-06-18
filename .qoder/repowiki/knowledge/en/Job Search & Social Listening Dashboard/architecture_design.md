@@ -1,0 +1,6 @@
+- **Entry Point**: `src/main.tsx` bootstraps the React application with a `ThemeProvider` and renders the root `App` component.
+- **Layout & Routing**: `src/App.tsx` implements a tab-based navigation structure (`Job Search`, `Social Listening`, `Configuration`) using `shadcn/ui` tabs, acting as the primary layout controller.
+- **Feature Modules**: Domain logic is encapsulated in `src/components/dashboard/`, where each tab (e.g., `job-search-tab.tsx`) manages its own local state, form handling, and service orchestration.
+- **Service Layer**: `src/services/` contains thin API clients for external integrations: `apify.ts` handles job scraping via a Supabase Edge Function proxy, `google-sheets.ts` manages CRUD operations for job/post persistence using JWT-signed OAuth2 tokens, and `config.ts` provides a localStorage-backed configuration store.
+- **Shared UI**: A comprehensive library of headless UI components powered by Radix UI and styled with Tailwind CSS resides in `src/components/ui/`, following the `shadcn/ui` architecture defined in `components.json`.
+- **Type Safety**: Centralized domain models and API contracts are defined in `src/types/index.ts`, ensuring consistent data shapes across services and components.

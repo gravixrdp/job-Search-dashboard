@@ -1,0 +1,1 @@
+A React-based command center for aggregating job listings from multiple platforms and monitoring LinkedIn hiring posts, with data persistence in Google Sheets.

@@ -1,0 +1,4 @@
+- Services expose typed async functions that return standardized result objects or throw errors, keeping components free from direct fetch/HTTP logic.
+- Components use local `useState` for UI state and `useEffect` for initial data loading, avoiding complex global state management libraries.
+- External API credentials and user preferences are persisted in `localStorage` via dedicated service helpers (`getConfig`, `saveConfig`) rather than environment variables for client-side flexibility.
+- Data transformation logic (e.g., normalizing Apify responses to internal `Job` types) is centralized in service layers before reaching UI components.
