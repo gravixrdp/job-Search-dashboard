@@ -141,9 +141,12 @@ export interface ApifyDatasetItem {
   jobType?: string | string[]
   // LinkedIn Post specific fields
   text?: string
-  author?: string
+  author?: string | { name?: string; info?: string; publicIdentifier?: string; linkedinUrl?: string }
   authorTitle?: string
   postUrl?: string
+  // harvestapi/linkedin-post-search output fields
+  content?: string
+  linkedinUrl?: string
 }
 
 // ============================================================================

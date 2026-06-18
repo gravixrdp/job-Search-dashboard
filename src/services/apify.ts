@@ -275,6 +275,8 @@ export async function runLinkedInPostScraper(
   const input = {
     searchQueries: [searchQuery],
     maxPosts: 50,
+    sortBy: "date",
+    postedLimit: "week",
   }
 
   return runScraperViaWorker(config.linkedinPostActorId, input)
@@ -300,13 +302,20 @@ export function transformApifyItemToJob(
 }
 
 export function transformApifyItemToLinkedInPost(item: ApifyDatasetItem): LinkedInHiringPost {
+  // Handle harvestapi/linkedin-post-search output format
+  const authorObj = item.author as unknown as { name?: string; info?: string } | undefined
+  const authorName = (typeof item.author === 'object' && authorObj?.name) ? authorObj.name : (item.author as unknown as string) || ""
+  const authorTitle = (typeof item.author === 'object' && authorObj?.info) ? authorObj.info : item.authorTitle || ""
+  const postText = item.content || item.text || ""
+  const postUrl = item.linkedinUrl || item.postUrl || ""
+
   return {
     post_id: generatePostId(item),
-    author_name: item.author || "",
-    author_title: item.authorTitle || "",
-    post_text: item.text || "",
-    post_url: item.postUrl || "",
-    detected_keywords: extractKeywords(item.text || ""),
+    author_name: authorName,
+    author_title: authorTitle,
+    post_text: postText,
+    post_url: postUrl,
+    detected_keywords: extractKeywords(postText),
     status: "Unread",
   }
 }
@@ -325,5 +334,6 @@ function extractKeywords(text: string): string {
 }
 
 export function buildBooleanSearchQuery(userInput: string): string {
-  return `("hiring" OR "looking for") AND (${userInput})`
+  // Pass through directly — the user composes full boolean queries in the UI
+  return userInput
 }

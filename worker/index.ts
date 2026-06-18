@@ -24,7 +24,7 @@ const DEFAULT_ACTOR_IDS: Record<string, string> = {
   founditActorId: "codingfrontend/foundit-jobs-scraper",
   hiristActorId: "logiover/hirist-tech-scraper",
   shineActorId: "unfenced-group/shine-scraper",
-  linkedinPostActorId: "apify/linkedin-post-scraper",
+  linkedinPostActorId: "harvestapi/linkedin-post-search",
 }
 
 const WORKER_SCRIPT_NAME = "huntsync-ai"
