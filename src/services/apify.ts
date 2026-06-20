@@ -48,18 +48,31 @@ async function runScraperViaWorker(
   actorId: string,
   input: Record<string, unknown>
 ): Promise<ApifyDatasetItem[]> {
-  const response = await fetch("/api/apify/run", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ actorId, input }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 180000) // 3 minute timeout
 
-  if (!response.ok) {
-    const error = await response.json() as { error?: string }
-    throw new Error(error.error || `HTTP ${response.status}`)
+  try {
+    const response = await fetch("/api/apify/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ actorId, input }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const error = await response.json() as { error?: string }
+      throw new Error(error.error || `HTTP ${response.status}`)
+    }
+
+    return response.json() as Promise<ApifyDatasetItem[]>
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") {
+      throw new Error("Scraper timed out after 3 minutes. Please try again.")
+    }
+    throw e
+  } finally {
+    clearTimeout(timeoutId)
   }
-
-  return response.json() as Promise<ApifyDatasetItem[]>
 }
 
 // LinkedIn Jobs Scraper - uses search URLs

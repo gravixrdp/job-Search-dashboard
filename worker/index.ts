@@ -215,8 +215,9 @@ async function wipeSheets(spreadsheetId: string, serviceAccountKey: string): Pro
 
 // ─── Apify Proxy ────────────────────────────────────────────────────────────
 async function runApifyScraper(apiToken: string, actorId: string, input: Record<string, unknown>): Promise<unknown> {
+  // 1. Start the run WITHOUT blocking (waitForFinish=0)
   const runRes = await fetch(
-    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${apiToken}&waitForFinish=300`,
+    `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs?token=${apiToken}&waitForFinish=0`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -227,8 +228,26 @@ async function runApifyScraper(apiToken: string, actorId: string, input: Record<
   if (!runRes.ok) throw new Error(`Apify run failed: ${runRes.status}`)
   const runData = await runRes.json() as Record<string, unknown>
   const runObj = runData.data as Record<string, unknown>
+  const runId = runObj.id as string
   const datasetId = runObj.defaultDatasetId as string
 
+  // 2. Poll for run completion (short requests instead of one long-blocking call)
+  const maxAttempts = 60 // up to ~120 seconds with 2s intervals
+  for (let i = 0; i < maxAttempts; i++) {
+    await new Promise((r) => setTimeout(r, 2000))
+    const statusRes = await fetch(
+      `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs/${runId}?token=${apiToken}`
+    )
+    if (!statusRes.ok) continue
+    const statusData = await statusRes.json() as Record<string, unknown>
+    const statusObj = statusData.data as Record<string, unknown>
+    const status = statusObj.status as string
+    if (status === "SUCCEEDED" || status === "ABORTED" || status === "FAILED" || status === "TIMED-OUT") {
+      break
+    }
+  }
+
+  // 3. Fetch dataset items
   const dsRes = await fetch(
     `https://api.apify.com/v2/datasets/${datasetId}/items?token=${apiToken}`
   )
