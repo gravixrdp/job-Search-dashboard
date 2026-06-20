@@ -34,8 +34,11 @@ export interface LinkedInHiringPost {
   author_title: string
   post_text: string
   post_url: string
+  email: string
+  experience_req: string
   detected_keywords: string
   status: PostStatus
+  scraped_at: string
 }
 
 // ============================================================================

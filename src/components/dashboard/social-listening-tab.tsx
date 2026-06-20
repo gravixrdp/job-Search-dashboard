@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react"
-import { Play, RefreshCw, ExternalLink, Loader2, User, AtSign } from "lucide-react"
+import { useState, useEffect, useMemo } from "react"
+import { Play, RefreshCw, ExternalLink, Loader2, User, AtSign, Mail, Briefcase } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
@@ -20,6 +21,10 @@ import type { LinkedInHiringPost, PostStatus } from "@/types"
 import { getConfig, loadConfigFromServer } from "@/services/config"
 import { runLinkedInPostScraper, transformApifyItemToLinkedInPost, buildBooleanSearchQuery } from "@/services/apify"
 import { appendLinkedInPosts, getAllLinkedInPosts, updatePostStatus } from "@/services/google-sheets"
+
+const LOCATION_OPTIONS = [
+  "Remote", "Ahmedabad", "Gandhinagar", "Rajkot", "Surat", "Jamnagar", "Vadodara",
+] as const
 
 const DEFAULT_QUERIES = [
   { label: "DevOps Hiring", query: '("hiring" OR "looking for") AND ("DevOps" OR "Cloud Engineer" OR "SRE")' },
@@ -38,6 +43,44 @@ export function SocialListeningTab() {
   const [posts, setPosts] = useState<LinkedInHiringPost[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isScraping, setIsScraping] = useState(false)
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([])
+  const [dateFilter, setDateFilter] = useState<string>("all")
+
+  const filteredPosts = useMemo(() => {
+    let result = posts
+
+    // Location filter (client-side substring match on post_text)
+    if (selectedLocations.length > 0) {
+      result = result.filter((post) => {
+        const text = post.post_text.toLowerCase()
+        return selectedLocations.some((loc) => {
+          if (loc === "Remote") {
+            return text.includes("remote") || text.includes("work from anywhere") || text.includes("wfh")
+          }
+          return text.includes(loc.toLowerCase())
+        })
+      })
+    }
+
+    // Date filter (client-side based on scraped_at)
+    if (dateFilter !== "all") {
+      const now = Date.now()
+      const cutoffMap: Record<string, number> = {
+        "24h": now - 24 * 60 * 60 * 1000,
+        "7d": now - 7 * 24 * 60 * 60 * 1000,
+        "14d": now - 14 * 24 * 60 * 60 * 1000,
+      }
+      const cutoff = cutoffMap[dateFilter]
+      if (cutoff) {
+        result = result.filter((post) => {
+          if (!post.scraped_at) return true
+          return new Date(post.scraped_at).getTime() >= cutoff
+        })
+      }
+    }
+
+    return result
+  }, [posts, selectedLocations, dateFilter])
 
   useEffect(() => {
     loadConfigFromServer().then(() => loadPosts())
@@ -134,6 +177,45 @@ export function SocialListeningTab() {
             </FieldDescription>
           </Field>
 
+          {/* Location Filter */}
+          <Field>
+            <FieldLabel>Filter by Location</FieldLabel>
+            <div className="flex flex-wrap gap-3">
+              {LOCATION_OPTIONS.map((loc) => (
+                <label key={loc} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={selectedLocations.includes(loc)}
+                    onCheckedChange={(checked) => {
+                      setSelectedLocations((prev) =>
+                        checked ? [...prev, loc] : prev.filter((l) => l !== loc)
+                      )
+                    }}
+                  />
+                  {loc}
+                </label>
+              ))}
+            </div>
+          </Field>
+
+          {/* Date Filter */}
+          <Field>
+            <FieldLabel>Filter by Date</FieldLabel>
+            <Select value={dateFilter} onValueChange={setDateFilter}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Time</SelectItem>
+                <SelectItem value="24h">Last 24 Hours</SelectItem>
+                <SelectItem value="7d">Last 7 Days</SelectItem>
+                <SelectItem value="14d">Last 14 Days</SelectItem>
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Filters posts based on when they were scraped.
+            </FieldDescription>
+          </Field>
+
           {/* Quick Presets */}
           <div>
             <FieldLabel className="text-sm mb-2">Quick Presets</FieldLabel>
@@ -174,18 +256,21 @@ export function SocialListeningTab() {
         <CardHeader>
           <CardTitle>Hiring Post Feed</CardTitle>
           <CardDescription>
-            {isLoading ? "Loading..." : `${posts.length} hiring posts found`}
+            {isLoading ? "Loading..." : selectedLocations.length > 0 || dateFilter !== "all"
+              ? `${filteredPosts.length} of ${posts.length} hiring posts shown`
+              : `${posts.length} hiring posts found`
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ScrollArea className="h-[600px]">
-            {posts.length === 0 ? (
+            {filteredPosts.length === 0 ? (
               <div className="text-center text-muted-foreground py-12">
                 {isLoading ? "Loading posts..." : "No hiring posts found. Configure your search query and click 'Start Social Scraper'."}
               </div>
             ) : (
               <div className="space-y-4">
-                {posts.map((post) => (
+                {filteredPosts.map((post) => (
                   <Card key={post.post_id} className="overflow-hidden">
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -207,6 +292,22 @@ export function SocialListeningTab() {
                               <AtSign className="size-3" />
                               {post.author_title}
                             </div>
+                            {(post.email || post.experience_req) && (
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {post.email && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Mail className="size-3 mr-1" />
+                                    <a href={`mailto:${post.email}`} className="hover:underline">{post.email}</a>
+                                  </Badge>
+                                )}
+                                {post.experience_req && (
+                                  <Badge variant="outline" className="text-xs">
+                                    <Briefcase className="size-3 mr-1" />
+                                    {post.experience_req}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
                             <p
                               className="text-sm leading-relaxed line-clamp-4"
                               dangerouslySetInnerHTML={{

@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS linkedin_posts (
   author_title TEXT DEFAULT '',
   post_text TEXT DEFAULT '',
   post_url TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  experience_req TEXT DEFAULT '',
   detected_keywords TEXT DEFAULT '',
+  scraped_at TEXT DEFAULT '',
   status TEXT DEFAULT 'Unread'
 );
 

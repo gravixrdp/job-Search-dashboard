@@ -315,8 +315,11 @@ export function transformApifyItemToLinkedInPost(item: ApifyDatasetItem): Linked
     author_title: authorTitle,
     post_text: postText,
     post_url: postUrl,
+    email: extractEmail(postText),
+    experience_req: extractExperience(postText),
     detected_keywords: extractKeywords(postText),
     status: "Unread",
+    scraped_at: new Date().toISOString(),
   }
 }
 
@@ -325,6 +328,27 @@ function determineJobType(typeStr: string): Job["job_type"] {
   if (lower.includes("remote")) return "Remote"
   if (lower.includes("hybrid") || lower.includes("wfh")) return "WFH"
   return "WFO"
+}
+
+function extractEmail(text: string): string {
+  const match = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)
+  return match ? match[0] : ""
+}
+
+function extractExperience(text: string): string {
+  // Match patterns like "3+ years", "2-5 years", "5 yrs experience"
+  const yearPattern = text.match(/\b(\d+)\s*[-–+]?\s*(\d+)?\s*(years?|yrs?)\b/i)
+  if (yearPattern) return yearPattern[0].trim()
+
+  // Match "N years of experience"
+  const expPattern = text.match(/\b(\d+)\s*years?\s*(of\s*)?experience\b/i)
+  if (expPattern) return expPattern[0].trim()
+
+  // Match level keywords
+  const levelPattern = text.match(/\b(fresher|entry.level|junior|mid.level|senior)\b/i)
+  if (levelPattern) return levelPattern[0].trim()
+
+  return ""
 }
 
 function extractKeywords(text: string): string {

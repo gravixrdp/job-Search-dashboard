@@ -192,9 +192,9 @@ async function backupPostsToSheets(
   try {
     const token = await getAccessToken(serviceAccountKey)
     const values = posts.map((p) => [
-      p.post_id, p.author_name, p.author_title, p.post_text, p.post_url, p.detected_keywords, p.status,
+      p.post_id, p.author_name, p.author_title, p.post_text, p.post_url, p.email || "", p.experience_req || "", p.detected_keywords, p.scraped_at || "", p.status,
     ])
-    await sheetsFetch(spreadsheetId, token, `/values/LinkedIn_Hiring_Posts!A:G:append`, {
+    await sheetsFetch(spreadsheetId, token, `/values/LinkedIn_Hiring_Posts!A:J:append`, {
       method: "POST",
       body: JSON.stringify({ values, insertDataOption: "INSERT_ROWS", valueInputOption: "RAW" }),
     })
@@ -207,7 +207,7 @@ async function wipeSheets(spreadsheetId: string, serviceAccountKey: string): Pro
   try {
     const token = await getAccessToken(serviceAccountKey)
     await sheetsFetch(spreadsheetId, token, `/values/All_Jobs_Master!A2:K:clear`, { method: "POST" })
-    await sheetsFetch(spreadsheetId, token, `/values/LinkedIn_Hiring_Posts!A2:G:clear`, { method: "POST" })
+    await sheetsFetch(spreadsheetId, token, `/values/LinkedIn_Hiring_Posts!A2:J:clear`, { method: "POST" })
   } catch (e) {
     console.error("Sheets wipe failed:", e)
   }
@@ -398,11 +398,11 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
 
       if (newPosts.length > 0) {
         const stmt = env.DB.prepare(
-          `INSERT OR IGNORE INTO linkedin_posts (post_id, author_name, author_title, post_text, post_url, detected_keywords, status)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`
+          `INSERT OR IGNORE INTO linkedin_posts (post_id, author_name, author_title, post_text, post_url, email, experience_req, detected_keywords, scraped_at, status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         const batch = newPosts.map((p) =>
-          stmt.bind(p.post_id, p.author_name || "", p.author_title || "", p.post_text || "", p.post_url || "", p.detected_keywords || "", p.status || "Unread")
+          stmt.bind(p.post_id, p.author_name || "", p.author_title || "", p.post_text || "", p.post_url || "", p.email || "", p.experience_req || "", p.detected_keywords || "", p.scraped_at || "", p.status || "Unread")
         )
         await env.DB.batch(batch)
 
@@ -425,12 +425,12 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
       if (env.GCP_SERVICE_ACCOUNT_KEY && env.GCP_SPREADSHEET_ID) {
         try {
           const token = await getAccessToken(env.GCP_SERVICE_ACCOUNT_KEY)
-          const res = await sheetsFetch(env.GCP_SPREADSHEET_ID, token, `/values/LinkedIn_Hiring_Posts!A:G?majorDimension=ROWS`)
+          const res = await sheetsFetch(env.GCP_SPREADSHEET_ID, token, `/values/LinkedIn_Hiring_Posts!A:J?majorDimension=ROWS`)
           if (res.ok) {
             const data = (await res.json()) as { values?: string[][] }
             const rowIndex = (data.values || []).findIndex((row: string[]) => row[0] === body.postId)
             if (rowIndex !== -1) {
-              await sheetsFetch(env.GCP_SPREADSHEET_ID, token, `/values/LinkedIn_Hiring_Posts!G${rowIndex + 1}?valueInputOption=RAW`, {
+              await sheetsFetch(env.GCP_SPREADSHEET_ID, token, `/values/LinkedIn_Hiring_Posts!J${rowIndex + 1}?valueInputOption=RAW`, {
                 method: "PUT", body: JSON.stringify({ values: [[body.status]] }),
               })
             }
