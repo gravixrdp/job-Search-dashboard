@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Plus, Play, RefreshCw, Trash2, ExternalLink, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
@@ -31,7 +31,7 @@ import { runLinkedInScraper, runIndeedScraper, runNaukriScraper, runGlassdoorScr
 import { appendJobs, getAllJobs, updateJobStatus } from "@/services/google-sheets"
 
 const DEFAULT_KEYWORDS = ["DevOps Engineer", "Cloud Engineer", "SRE", "Platform Engineer", "Infrastructure Engineer"]
-const DEFAULT_LOCATIONS = ["Ahmedabad", "Pune", "Remote", "Bangalore", "Mumbai"]
+const DEFAULT_LOCATIONS = ["Ahmedabad", "Gandhinagar", "Rajkot", "Surat", "Jamnagar", "Vadodara", "Pune", "Bangalore", "Mumbai", "Remote"]
 
 const FILTERS_STORAGE_KEY = "huntsync_filters"
 
@@ -82,6 +82,33 @@ export function JobSearchTab() {
   const [selectedExperience, setSelectedExperience] = useState<ExperienceLevel>("1-3 years")
   const [customKeyword, setCustomKeyword] = useState("")
   const [customLocation, setCustomLocation] = useState("")
+
+  // Client-side filtered jobs based on selected locations and job types
+  const filteredJobs = useMemo(() => {
+    if (selectedLocations.length === 0 && selectedJobTypes.length === 0) return jobs
+
+    return jobs.filter((job) => {
+      // Location filter: job location must match at least one selected location
+      if (selectedLocations.length > 0) {
+        const jobLoc = job.location.toLowerCase()
+        const matchesLocation = selectedLocations.some((loc) => {
+          const lower = loc.toLowerCase()
+          if (lower === "remote") {
+            return jobLoc.includes("remote") || job.job_type === "Remote"
+          }
+          return jobLoc.includes(lower)
+        })
+        if (!matchesLocation) return false
+      }
+
+      // Job type filter: job type must match at least one selected type
+      if (selectedJobTypes.length > 0) {
+        if (!selectedJobTypes.includes(job.job_type)) return false
+      }
+
+      return true
+    })
+  }, [jobs, selectedLocations, selectedJobTypes])
 
   useEffect(() => {
     loadConfigFromServer().then(() => loadJobs())
@@ -199,7 +226,21 @@ export function JobSearchTab() {
         }
 
         result = await scraper()
-        const transformedJobs = result.items.map((item) => transformApifyItemToJob(item, platform))
+        let transformedJobs = result.items.map((item) => transformApifyItemToJob(item, platform))
+
+        // Client-side filter: only keep jobs matching selected locations
+        if (filter.locations.length > 0) {
+          transformedJobs = transformedJobs.filter((job) => {
+            const jobLoc = job.location.toLowerCase()
+            return filter.locations.some((loc) => {
+              const lower = loc.toLowerCase()
+              if (lower === "remote") {
+                return jobLoc.includes("remote") || job.job_type === "Remote"
+              }
+              return jobLoc.includes(lower)
+            })
+          })
+        }
 
         const added = await appendJobs(transformedJobs)
         totalAdded += added
@@ -416,7 +457,10 @@ export function JobSearchTab() {
             <div>
               <CardTitle>Job Results</CardTitle>
               <CardDescription>
-                {isLoading ? "Loading..." : `${jobs.length} jobs found`}
+                {isLoading ? "Loading..." : selectedLocations.length > 0 || selectedJobTypes.length > 0
+                  ? `${filteredJobs.length} of ${jobs.length} jobs shown`
+                  : `${jobs.length} jobs found`
+                }
               </CardDescription>
             </div>
             <Button variant="outline" size="icon" onClick={loadJobs} disabled={isLoading}>
@@ -439,14 +483,14 @@ export function JobSearchTab() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {jobs.length === 0 ? (
+                {filteredJobs.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
-                      {isLoading ? "Loading jobs..." : "No jobs found. Configure your scrapers and click 'Scrape All' to get started."}
+                      {isLoading ? "Loading jobs..." : "No jobs match your current filters. Try adjusting location or job type filters."}
                     </TableCell>
                   </TableRow>
                 ) : (
-                  jobs.map((job) => (
+                  filteredJobs.map((job) => (
                     <TableRow key={job.job_id}>
                       <TableCell>
                         <Badge className={platformColors[job.source_platform]}>
