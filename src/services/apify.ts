@@ -12,11 +12,11 @@ export type { ApifyDatasetItem } from "@/types"
 
 function generateJobId(job: ApifyDatasetItem, platform: string): string {
   const hash = `${platform}-${job.title || ""}-${job.company || ""}-${job.location || ""}`
-  return btoa(hash).slice(0, 32)
+  return btoa(encodeURIComponent(hash)).slice(0, 32)
 }
 
 function generatePostId(post: ApifyDatasetItem): string {
-  return post.id || btoa(`${post.author || ""}-${post.postUrl || ""}`).slice(0, 32)
+  return post.id || btoa(encodeURIComponent(`${post.author || ""}-${post.postUrl || ""}`)).slice(0, 32)
 }
 
 export async function testApifyConnection(): Promise<{ success: boolean; error?: string }> {
