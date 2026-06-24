@@ -1,17 +1,17 @@
 {
   "$schema": "https://example.com/memory-schema-v1.json",
   "metadata": {
-    "name": "HuntSync AI Project Memory",
+    "name": "gravix-job Project Memory",
     "version": "1.0.2",
     "createdAt": "2026-06-25T00:00:00.000Z",
     "lastUpdatedAt": "2026-06-25T00:00:00.000Z",
     "source": "https://github.com/gravixrdp/job-Search-dashboard",
     "author": "gravixrdp",
     "accessPermissions": "public",
-    "description": "Structured memory for the HuntSync AI job search dashboard project"
+    "description": "Structured memory for the gravix-job job search dashboard project",
   },
   "projectOverview": {
-    "name": "HuntSync AI",
+    "name": "gravix-job",
     "description": "A job search command center built as a full-stack application on Cloudflare, automating job searching across multiple platforms and performing social listening on LinkedIn for hiring posts",
     "repositoryPath": "d:\\job-dashboard\\job-Search-dashboard"
   },
