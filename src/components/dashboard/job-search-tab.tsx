@@ -27,7 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 
 import type { Job, SearchFilter, JobType, ApplicationStatus, SourcePlatform, ExperienceLevel } from "@/types"
 import { getConfig, loadConfigFromServer } from "@/services/config"
-import { runLinkedInScraper, runIndeedScraper, runNaukriScraper, runGlassdoorScraper, runInternshalaScraper, runWellfoundScraper, runFounditScraper, runHiristScraper, runShineScraper, transformApifyItemToJob, type ApifyDatasetItem } from "@/services/apify"
+import { runLinkedInScraper, runIndeedScraper, runNaukriScraper, runGlassdoorScraper, runInternshalaScraper, runWellfoundScraper, runFounditScraper, runHiristScraper, runShineScraper, transformApifyItemToJob, type ApifyDatasetItem, matchesAllFilters } from "@/services/apify"
 import { appendJobs, getAllJobs, updateJobStatus } from "@/services/google-sheets"
 
 const DEFAULT_KEYWORDS = ["DevOps Engineer", "Cloud Engineer", "SRE", "Platform Engineer", "Infrastructure Engineer"]
@@ -83,32 +83,21 @@ export function JobSearchTab() {
   const [customKeyword, setCustomKeyword] = useState("")
   const [customLocation, setCustomLocation] = useState("")
 
-  // Client-side filtered jobs based on selected locations and job types
+  // Client-side filtered jobs based on selected filters
+  const currentFilter = useMemo((): SearchFilter => ({
+    id: "current",
+    name: "Current Filter",
+    keywords: selectedKeywords,
+    experience: selectedExperience,
+    locations: selectedLocations,
+    job_types: selectedJobTypes,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }), [selectedKeywords, selectedExperience, selectedLocations, selectedJobTypes]);
+
   const filteredJobs = useMemo(() => {
-    if (selectedLocations.length === 0 && selectedJobTypes.length === 0) return jobs
-
-    return jobs.filter((job) => {
-      // Location filter: job location must match at least one selected location
-      if (selectedLocations.length > 0) {
-        const jobLoc = job.location.toLowerCase()
-        const matchesLocation = selectedLocations.some((loc) => {
-          const lower = loc.toLowerCase()
-          if (lower === "remote") {
-            return jobLoc.includes("remote") || job.job_type === "Remote"
-          }
-          return jobLoc.includes(lower)
-        })
-        if (!matchesLocation) return false
-      }
-
-      // Job type filter: job type must match at least one selected type
-      if (selectedJobTypes.length > 0) {
-        if (!selectedJobTypes.includes(job.job_type)) return false
-      }
-
-      return true
-    })
-  }, [jobs, selectedLocations, selectedJobTypes])
+    return jobs.filter(job => matchesAllFilters(job, currentFilter))
+  }, [jobs, currentFilter])
 
   useEffect(() => {
     loadConfigFromServer().then(() => loadJobs())
@@ -228,19 +217,8 @@ export function JobSearchTab() {
         result = await scraper()
         let transformedJobs = result.items.map((item) => transformApifyItemToJob(item, platform))
 
-        // Client-side filter: only keep jobs matching selected locations
-        if (filter.locations.length > 0) {
-          transformedJobs = transformedJobs.filter((job) => {
-            const jobLoc = job.location.toLowerCase()
-            return filter.locations.some((loc) => {
-              const lower = loc.toLowerCase()
-              if (lower === "remote") {
-                return jobLoc.includes("remote") || job.job_type === "Remote"
-              }
-              return jobLoc.includes(lower)
-            })
-          })
-        }
+        // Client-side filter: only keep jobs matching all selected filters
+        transformedJobs = transformedJobs.filter(job => matchesAllFilters(job, filter))
 
         const added = await appendJobs(transformedJobs)
         totalAdded += added
