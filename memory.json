@@ -2,7 +2,7 @@
   "$schema": "https://example.com/memory-schema-v1.json",
   "metadata": {
     "name": "gravix-job Project Memory",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "createdAt": "2026-06-25T00:00:00.000Z",
     "lastUpdatedAt": "2026-06-25T00:00:00.000Z",
     "source": "https://github.com/gravixrdp/job-Search-dashboard",
@@ -10,6 +10,12 @@
     "accessPermissions": "public",
     "description": "Structured memory for the gravix-job job search dashboard project",
   },
+  "recentChanges": [
+    "2026-06-25: Changed logo name from HuntSync AI to gravix-job (src/App.tsx)",
+    "2026-06-25: Increased scraper result limits (Indeed: maxItemsPerSearch 100→150, others: maxPagesPerQuery 2→3)",
+    "2026-06-25: Reverted LinkedIn actor ID to curious_coder/linkedin-jobs-scraper due to compatibility issues",
+    "2026-06-25: Updated token update UI in config-tab.tsx to clarify current token is stored securely"
+  ],
   "projectOverview": {
     "name": "gravix-job",
     "description": "A job search command center built as a full-stack application on Cloudflare, automating job searching across multiple platforms and performing social listening on LinkedIn for hiring posts",
@@ -248,15 +254,19 @@
     ],
     "supportedPlatforms": [
       { "platform": "LinkedIn Jobs", "actorId": "curious_coder/linkedin-jobs-scraper", "inputType": "searchUrls" },
-      { "platform": "Indeed", "actorId": "misceres/indeed-scraper", "inputType": "position + location" },
-      { "platform": "Naukri", "actorId": "accurate_workstation/naukri-jobs-scraper-free", "inputType": "queries + location" },
-      { "platform": "Glassdoor", "actorId": "fatihai-tools/glassdoor-jobs", "inputType": "queries + location" },
-      { "platform": "Internshala", "actorId": "unfenced-group/internshala-scraper", "inputType": "queries + location" },
-      { "platform": "Wellfound", "actorId": "blackfalcondata/wellfound-scraper", "inputType": "queries + location" },
-      { "platform": "Foundit", "actorId": "codingfrontend/foundit-jobs-scraper", "inputType": "queries + location" },
-      { "platform": "Hirist", "actorId": "logiover/hirist-tech-scraper", "inputType": "queries + location" },
-      { "platform": "Shine", "actorId": "unfenced-group/shine-scraper", "inputType": "queries + location" },
+      { "platform": "Indeed", "actorId": "misceres/indeed-scraper", "inputType": "position + location", "limit": "maxItemsPerSearch: 150" },
+      { "platform": "Naukri", "actorId": "accurate_workstation/naukri-jobs-scraper-free", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
+      { "platform": "Glassdoor", "actorId": "fatihai-tools/glassdoor-jobs", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
+      { "platform": "Internshala", "actorId": "unfenced-group/internshala-scraper", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
+      { "platform": "Wellfound", "actorId": "blackfalcondata/wellfound-scraper", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
+      { "platform": "Foundit", "actorId": "codingfrontend/foundit-jobs-scraper", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
+      { "platform": "Hirist", "actorId": "logiover/hirist-tech-scraper", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
+      { "platform": "Shine", "actorId": "unfenced-group/shine-scraper", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
       { "platform": "LinkedIn Posts", "actorId": "harvestapi/linkedin-post-search", "inputType": "searchQueries" }
+    ],
+    "scraperOptimization": [
+      "Combined multiple keywords/locations into single requests to avoid Cloudflare subrequest limits",
+      "Increased result limits to get more matching jobs for better filtering results"
     ]
   },
   "deploymentEnvironment": {
