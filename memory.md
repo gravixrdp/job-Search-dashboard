@@ -1,7 +1,16 @@
-# HuntSync AI - Job Dashboard Project Memory
+# gravix-job - Job Dashboard Project Memory
 
 ## Project Overview
-**HuntSync AI** is a job search command center built as a full-stack application on Cloudflare. It automates job searching across multiple platforms and performs social listening on LinkedIn to find hiring posts from recruiters. The app provides a unified dashboard for managing job applications and tracking hiring opportunities.
+**gravix-job** is a job search command center built as a full-stack application on Cloudflare. It automates job searching across multiple platforms and performs social listening on LinkedIn to find hiring posts from recruiters. The app provides a unified dashboard for managing job applications and tracking hiring opportunities.
+
+## Recent Changes (2026-06-25)
+- Changed logo name from HuntSync AI to gravix-job (src/App.tsx)
+- Increased scraper result limits:
+  - Indeed: maxItemsPerSearch from 100 to 150
+  - All others: maxPagesPerQuery from 2 to 3
+- Reverted LinkedIn actor ID to curious_coder/linkedin-jobs-scraper due to compatibility issues
+- Updated token update UI in config-tab.tsx to clarify current token is stored securely
+- Optimized scrapers to combine multiple keywords/locations into single requests (avoids Cloudflare subrequest limits)
 
 **Repository**: `d:\job-dashboard\job-Search-dashboard`
 
@@ -208,14 +217,14 @@ GCPConfig: { serviceAccountKey, spreadsheetId }
 
 ### Supported Platforms (9 job boards + 1 post scraper)
 - LinkedIn Jobs: `curious_coder/linkedin-jobs-scraper` (uses searchUrls)
-- Indeed: `misceres/indeed-scraper` (uses position + location)
-- Naukri: `accurate_workstation/naukri-jobs-scraper-free`
-- Glassdoor: `fatihai-tools/glassdoor-jobs`
-- Internshala: `unfenced-group/internshala-scraper`
-- Wellfound: `blackfalcondata/wellfound-scraper`
-- Foundit: `codingfrontend/foundit-jobs-scraper`
-- Hirist: `logiover/hirist-tech-scraper`
-- Shine: `unfenced-group/shine-scraper`
+- Indeed: `misceres/indeed-scraper` (uses position + location, maxItemsPerSearch: 150)
+- Naukri: `accurate_workstation/naukri-jobs-scraper-free` (maxPagesPerQuery: 3)
+- Glassdoor: `fatihai-tools/glassdoor-jobs` (maxPagesPerQuery: 3)
+- Internshala: `unfenced-group/internshala-scraper` (maxPagesPerQuery: 3)
+- Wellfound: `blackfalcondata/wellfound-scraper` (maxPagesPerQuery: 3)
+- Foundit: `codingfrontend/foundit-jobs-scraper` (maxPagesPerQuery: 3)
+- Hirist: `logiover/hirist-tech-scraper` (maxPagesPerQuery: 3)
+- Shine: `unfenced-group/shine-scraper` (maxPagesPerQuery: 3)
 - LinkedIn Posts: `harvestapi/linkedin-post-search` (boolean queries)
 
 ### Data Normalization
