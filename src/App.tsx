@@ -21,7 +21,7 @@ export function App() {
               <Briefcase className="size-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight">HuntSync AI</h1>
+              <h1 className="text-lg font-semibold tracking-tight">gravix-job</h1>
               <p className="text-xs text-muted-foreground">Job Search Command Center</p>
             </div>
           </div>
