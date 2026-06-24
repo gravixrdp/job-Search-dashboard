@@ -395,7 +395,7 @@ curl -X POST http://localhost:8787/api/apify/test
 - Default keywords: DevOps Engineer, Cloud Engineer, SRE, Platform Engineer, Infrastructure Engineer
 - Default locations: Ahmedabad, Gandhinagar, Rajkot, Surat, Jamnagar, Vadodara, Pune, Bangalore, Mumbai, Remote
 - Scraper timeout: 180 seconds (3 minutes)
-- Apify poll interval: 2 seconds, max 60 attempts
+- Apify poll interval: dynamic (2s/5s/10s), max 120 seconds
 - Token cache expiry: 60 seconds before actual expiration
 
 ### External Dependencies

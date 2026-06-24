@@ -232,9 +232,24 @@ async function runApifyScraper(apiToken: string, actorId: string, input: Record<
   const datasetId = runObj.defaultDatasetId as string
 
   // 2. Poll for run completion (short requests instead of one long-blocking call)
-  const maxAttempts = 60 // up to ~120 seconds with 2s intervals
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((r) => setTimeout(r, 2000))
+  // Dynamic intervals: 2s for first 5 attempts, then 5s for next 10, then 10s thereafter.
+  // This keeps quick runs fast while staying well under Cloudflare's 50 subrequests limit.
+  let elapsed = 0
+  const maxDurationMs = 120000 // 120 seconds max polling duration
+  let attempts = 0
+
+  while (elapsed < maxDurationMs) {
+    let delay = 2000
+    if (attempts >= 15) {
+      delay = 10000
+    } else if (attempts >= 5) {
+      delay = 5000
+    }
+
+    await new Promise((r) => setTimeout(r, delay))
+    elapsed += delay
+    attempts++
+
     const statusRes = await fetch(
       `https://api.apify.com/v2/acts/${encodeURIComponent(actorId)}/runs/${runId}?token=${apiToken}`
     )

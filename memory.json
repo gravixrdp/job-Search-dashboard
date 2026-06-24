@@ -247,7 +247,7 @@
   "apifyIntegration": {
     "scraperExecutionPattern": [
       "POST /v2/acts/{actorId}/runs?waitForFinish=0 (non-blocking start)",
-      "Poll /v2/acts/{actorId}/runs/{runId} every 2s (max 60 attempts = 120s)",
+      "Poll /v2/acts/{actorId}/runs/{runId} with dynamic intervals (2s/5s/10s) up to 120s",
       "Break when status: SUCCEEDED/ABORTED/FAILED/TIMED-OUT",
       "GET /v2/datasets/{datasetId}/items (fetch results)",
       "Return items to frontend"
