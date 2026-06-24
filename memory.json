@@ -1,0 +1,320 @@
+{
+  "$schema": "https://example.com/memory-schema-v1.json",
+  "metadata": {
+    "name": "HuntSync AI Project Memory",
+    "version": "1.0.0",
+    "createdAt": "2026-06-25T00:00:00.000Z",
+    "lastUpdatedAt": "2026-06-25T00:00:00.000Z",
+    "source": "https://github.com/gravixrdp/job-Search-dashboard",
+    "author": "gravixrdp",
+    "accessPermissions": "public",
+    "description": "Structured memory for the HuntSync AI job search dashboard project"
+  },
+  "projectOverview": {
+    "name": "HuntSync AI",
+    "description": "A job search command center built as a full-stack application on Cloudflare, automating job searching across multiple platforms and performing social listening on LinkedIn for hiring posts",
+    "repositoryPath": "d:\\job-dashboard\\job-Search-dashboard"
+  },
+  "technologyStack": {
+    "frontend": ["React 19", "TypeScript", "Vite 7"],
+    "uiFramework": ["Radix UI", "Tailwind CSS 4", "shadcn/ui"],
+    "backend": ["Cloudflare Worker"],
+    "database": ["Cloudflare D1"],
+    "backup": ["Google Sheets API"],
+    "scraperIntegration": ["Apify API"],
+    "deployment": ["Cloudflare Workers via Wrangler"],
+    "buildTool": ["Vite with React plugin"],
+    "formHandling": ["React Hook Form", "Zod validation"]
+  },
+  "architecture": {
+    "frontendStructure": {
+      "root": "src/",
+      "mainApp": "App.tsx",
+      "directories": {
+        "components": {
+          "dashboard": ["job-search-tab.tsx", "social-listening-tab.tsx", "config-tab.tsx"],
+          "ui": "shadcn/ui component library (40+ components)"
+        },
+        "services": ["apify.ts", "google-sheets.ts", "config.ts"],
+        "types": ["index.ts"],
+        "hooks": ["use-mobile.ts"]
+      }
+    },
+    "backendStructure": {
+      "mainFile": "worker/index.ts",
+      "responsibilities": [
+        "Serves React SPA static assets via env.ASSETS",
+        "Handles all API routes under /api/*",
+        "Manages D1 database operations",
+        "Proxies Apify scraper requests with polling",
+        "Implements Google Sheets backup sync",
+        "Manages JWT-based Google OAuth (RS256 via Web Crypto)",
+        "Syncs secrets to Cloudflare Worker Secrets API"
+      ]
+    }
+  },
+  "keyFeatures": [
+    {
+      "id": "job-search-tab",
+      "name": "Job Search Tab",
+      "purpose": "Automated multi-platform job scraping and application tracking",
+      "coreFunctionality": [
+        "Filter Builder: Keywords, locations, experience level (0-1, 1-3, 3-5, 5+ years, Internship), job types (Remote, WFO, WFH)",
+        "Multi-Platform Scraping: LinkedIn, Indeed, Naukri, Glassdoor, Internshala, Wellfound, Foundit, Hirist, Shine",
+        "Saved Filters: Persisted to localStorage for reuse",
+        "Results Table: Sortable, filterable table with status management (To Apply → Applied → Interviewing → Rejected)",
+        "Client-Side Filtering: Location, job type, and experience filters applied after scraping",
+        "Deduplication: Job IDs generated from platform+title+company+location hash"
+      ],
+      "dataFlow": [
+        "User configures filters (keywords, locations, etc.)",
+        "Clicks \"Scrape [Platform]\" button",
+        "Frontend calls /api/apify/run with actor ID and input",
+        "Worker starts Apify run, polls for completion (max 120s)",
+        "Fetches dataset items from Apify",
+        "Transforms items to Job type with normalized fields",
+        "Appends to D1 via /api/jobs/append (deduplicates against existing)",
+        "Backs up to Google Sheets (All_Jobs_Master sheet)",
+        "Reloads job list for display"
+      ]
+    },
+    {
+      "id": "social-listening-tab",
+      "name": "Social Listening Tab",
+      "purpose": "Find hiring posts from recruiters/founders on LinkedIn",
+      "coreFunctionality": [
+        "Boolean Query Builder: Compose complex search queries with AND/OR/NOT operators",
+        "Quick Presets: Pre-built queries for DevOps, Tech Remote, Platform Engineer",
+        "Location/Date Filtering: Client-side filters on post text and scrape date",
+        "Post Feed Card UI: Shows author, title, post text, email, experience requirements",
+        "Keyword Highlighting: Automatically detects and highlights tech keywords (DevOps, Cloud, Kubernetes, AWS, etc.)",
+        "Status Tracking: Unread → Contacted → Ignored"
+      ],
+      "dataExtraction": [
+        "Email addresses extracted via regex from post text",
+        "Experience requirements parsed (e.g., \"3+ years\", \"5 years of experience\")",
+        "Tech keywords detected from predefined list",
+        "Posts auto-filtered to last 7 days"
+      ],
+      "dataFlow": [
+        "User composes boolean search query or selects preset",
+        "Clicks \"Start Social Scraper\"",
+        "Worker calls Apify harvestapi/linkedin-post-search actor",
+        "Transforms results to LinkedInHiringPost with extracted data",
+        "Appends to D1 via /api/posts/append",
+        "Backs up to Google Sheets (LinkedIn_Hiring_Posts sheet)",
+        "Displays in card-based feed UI"
+      ]
+    },
+    {
+      "id": "configuration-tab",
+      "name": "Configuration Tab",
+      "purpose": "Manage API integrations and system settings",
+      "sections": [
+        {
+          "id": "apify-configuration",
+          "name": "Apify Configuration",
+          "functionality": [
+            "API Token Management: Save/remove token with dual storage (D1 + Cloudflare Secrets)",
+            "Actor ID Mapping: 10 configurable actor IDs for different platforms",
+            "Connection Testing: POST /api/apify/test validates token via /v2/users/me"
+          ]
+        },
+        {
+          "id": "gcp-configuration",
+          "name": "GCP Configuration",
+          "functionality": [
+            "Service Account Key: JSON key for Google Sheets API access",
+            "Spreadsheet ID: ID of Google Sheet with All_Jobs_Master and LinkedIn_Hiring_Posts sheets",
+            "Connection Testing: POST /api/config/test-gcp validates access to spreadsheet",
+            "JWT Auth: RS256 signed JWT via Web Crypto, cached with expiry management"
+          ]
+        },
+        {
+          "id": "control-center",
+          "name": "Control Center",
+          "functionality": [
+            "Wipe Database: Clears D1 tables + Google Sheets data",
+            "Clear All Config: Removes all API keys and settings from D1"
+          ]
+        }
+      ]
+    }
+  ],
+  "dataModels": {
+    "d1DatabaseSchema": {
+      "tables": [
+        {
+          "name": "jobs",
+          "columns": [
+            { "name": "job_id", "type": "TEXT", "primaryKey": true },
+            { "name": "source_platform", "type": "TEXT" },
+            { "name": "title", "type": "TEXT" },
+            { "name": "company", "type": "TEXT" },
+            { "name": "location", "type": "TEXT" },
+            { "name": "job_type", "type": "TEXT" },
+            { "name": "experience_req", "type": "TEXT" },
+            { "name": "url", "type": "TEXT" },
+            { "name": "date_posted", "type": "TEXT" },
+            { "name": "scraped_at", "type": "TEXT" },
+            { "name": "application_status", "type": "TEXT" }
+          ]
+        },
+        {
+          "name": "linkedin_posts",
+          "columns": [
+            { "name": "post_id", "type": "TEXT", "primaryKey": true },
+            { "name": "author_name", "type": "TEXT" },
+            { "name": "author_title", "type": "TEXT" },
+            { "name": "post_text", "type": "TEXT" },
+            { "name": "post_url", "type": "TEXT" },
+            { "name": "email", "type": "TEXT" },
+            { "name": "experience_req", "type": "TEXT" },
+            { "name": "detected_keywords", "type": "TEXT" },
+            { "name": "scraped_at", "type": "TEXT" },
+            { "name": "status", "type": "TEXT" }
+          ]
+        },
+        {
+          "name": "config",
+          "columns": [
+            { "name": "key", "type": "TEXT", "primaryKey": true },
+            { "name": "value", "type": "TEXT" },
+            { "name": "updated_at", "type": "TEXT" }
+          ]
+        },
+        {
+          "name": "filters",
+          "columns": [
+            { "name": "id", "type": "TEXT", "primaryKey": true },
+            { "name": "name", "type": "TEXT" },
+            { "name": "data", "type": "JSON" },
+            { "name": "created_at", "type": "TEXT" },
+            { "name": "updated_at", "type": "TEXT" }
+          ]
+        }
+      ]
+    },
+    "keyTypeScriptTypes": {
+      "Job": {
+        "properties": ["job_id", "source_platform", "title", "company", "location", "job_type", "experience_req", "url", "date_posted", "scraped_at", "application_status"]
+      },
+      "LinkedInHiringPost": {
+        "properties": ["post_id", "author_name", "author_title", "post_text", "post_url", "email", "experience_req", "detected_keywords", "status", "scraped_at"]
+      },
+      "SearchFilter": {
+        "properties": ["id", "name", "keywords", "experience", "locations", "job_types", "created_at", "updated_at"]
+      }
+    }
+  },
+  "apiRoutes": {
+    "apifyRoutes": [
+      { "method": "POST", "path": "/api/apify/test", "description": "Test token validity" },
+      { "method": "POST", "path": "/api/apify/run", "description": "Run scraper (actorId + input)" },
+      { "method": "PUT", "path": "/api/apify/token", "description": "Save token to D1 + sync to CF secret" },
+      { "method": "DELETE", "path": "/api/apify/token", "description": "Remove token from D1 + CF secret" }
+    ],
+    "jobsRoutes": [
+      { "method": "GET", "path": "/api/jobs", "description": "Fetch all jobs (ordered by scraped_at DESC)" },
+      { "method": "POST", "path": "/api/jobs/append", "description": "Add new jobs (deduplication + Sheets backup)" },
+      { "method": "PATCH", "path": "/api/jobs/status", "description": "Update application_status + sync to Sheets" }
+    ],
+    "postsRoutes": [
+      { "method": "GET", "path": "/api/posts", "description": "Fetch all LinkedIn posts (ordered by rowid DESC)" },
+      { "method": "POST", "path": "/api/posts/append", "description": "Add new posts (deduplication + Sheets backup)" },
+      { "method": "PATCH", "path": "/api/posts/status", "description": "Update post status + sync to Sheets" }
+    ],
+    "configRoutes": [
+      { "method": "GET", "path": "/api/config", "description": "Get full config (merged with defaults, token masked)" },
+      { "method": "PUT", "path": "/api/config", "description": "Save Apify actor IDs + GCP settings" },
+      { "method": "POST", "path": "/api/config/test-gcp", "description": "Test Google Sheets access" }
+    ],
+    "filtersRoutes": [
+      { "method": "GET", "path": "/api/filters", "description": "Fetch saved filters" },
+      { "method": "POST", "path": "/api/filters", "description": "Create/update filter (upsert by id)" },
+      { "method": "DELETE", "path": "/api/filters/:id", "description": "Delete filter" }
+    ],
+    "utilityRoutes": [
+      { "method": "POST", "path": "/api/wipe", "description": "Clear all jobs + posts from D1 + Sheets" }
+    ]
+  },
+  "apifyIntegration": {
+    "scraperExecutionPattern": [
+      "POST /v2/acts/{actorId}/runs?waitForFinish=0 (non-blocking start)",
+      "Poll /v2/acts/{actorId}/runs/{runId} every 2s (max 60 attempts = 120s)",
+      "Break when status: SUCCEEDED/ABORTED/FAILED/TIMED-OUT",
+      "GET /v2/datasets/{datasetId}/items (fetch results)",
+      "Return items to frontend"
+    ],
+    "supportedPlatforms": [
+      { "platform": "LinkedIn Jobs", "actorId": "curious_coder/linkedin-jobs-scraper", "inputType": "searchUrls" },
+      { "platform": "Indeed", "actorId": "misceres/indeed-scraper", "inputType": "position + location" },
+      { "platform": "Naukri", "actorId": "accurate_workstation/naukri-jobs-scraper-free", "inputType": "queries + location" },
+      { "platform": "Glassdoor", "actorId": "fatihai-tools/glassdoor-jobs", "inputType": "queries + location" },
+      { "platform": "Internshala", "actorId": "unfenced-group/internshala-scraper", "inputType": "queries + location" },
+      { "platform": "Wellfound", "actorId": "blackfalcondata/wellfound-scraper", "inputType": "queries + location" },
+      { "platform": "Foundit", "actorId": "codingfrontend/foundit-jobs-scraper", "inputType": "queries + location" },
+      { "platform": "Hirist", "actorId": "logiover/hirist-tech-scraper", "inputType": "queries + location" },
+      { "platform": "Shine", "actorId": "unfenced-group/shine-scraper", "inputType": "queries + location" },
+      { "platform": "LinkedIn Posts", "actorId": "harvestapi/linkedin-post-search", "inputType": "searchQueries" }
+    ]
+  },
+  "deploymentEnvironment": {
+    "wranglerConfiguration": {
+      "name": "huntsync-ai",
+      "main": "worker/index.ts",
+      "compatibilityDate": "2025-06-18",
+      "assets": {
+        "directory": "./dist",
+        "notFoundHandling": "single-page-application"
+      },
+      "d1Databases": [
+        { "binding": "DB", "databaseName": "huntsync-db", "databaseId": "c7e5e19d-71c1-4df6-acee-c9e6a31ff03d" }
+      ],
+      "vars": { "CF_ACCOUNT_ID": "2fd4826d0cab77104d075279de4397f1" }
+    },
+    "requiredSecrets": [
+      "APIFY_TOKEN",
+      "CF_API_TOKEN",
+      "GCP_SERVICE_ACCOUNT_KEY",
+      "GCP_SPREADSHEET_ID"
+    ],
+    "buildDeployCommands": [
+      { "command": "npm run dev", "description": "Start Vite dev server" },
+      { "command": "npm run dev:worker", "description": "Start Wrangler local dev" },
+      { "command": "npm run build", "description": "Build for production" },
+      { "command": "npm run deploy", "description": "Build + deploy to Cloudflare" }
+    ]
+  },
+  "criticalPathsAndGotchas": [
+    "Apify Token Priority: D1 > env secret. Always check D1 first in getApifyToken()",
+    "Sheets Backup Failures: Wrapped in try-catch, never block main flow",
+    "Secret Sync: Requires CF_API_TOKEN, fails silently if not configured",
+    "D1 Batch Operations: Uses env.DB.batch() for efficient multi-insert",
+    "SPA Routing: not_found_handling = \"single-page-application\" in wrangler.toml",
+    "CORS: Handled in worker, not needed for same-origin frontend calls",
+    "Token Masking: Config endpoint returns \"***\" for apiToken, not actual value",
+    "Filter Storage: Saved filters in localStorage only, not synced to server",
+    "Date Filtering: Client-side only, based on scraped_at timestamp",
+    "Deduplication: INSERT OR IGNORE prevents duplicate job_id/post_id"
+  ],
+  "quickReference": {
+    "fileLocations": [
+      { "name": "Main App", "path": "src/App.tsx" },
+      { "name": "Job Search", "path": "src/components/dashboard/job-search-tab.tsx" },
+      { "name": "Social Listening", "path": "src/components/dashboard/social-listening-tab.tsx" },
+      { "name": "Configuration", "path": "src/components/dashboard/config-tab.tsx" },
+      { "name": "Worker API", "path": "worker/index.ts" },
+      { "name": "Database Schema", "path": "schema.sql" },
+      { "name": "Types", "path": "src/types/index.ts" },
+      { "name": "Services", "path": "src/services/{apify,google-sheets,config}.ts" }
+    ],
+    "keyConstants": {
+      "defaultKeywords": ["DevOps Engineer", "Cloud Engineer", "SRE", "Platform Engineer", "Infrastructure Engineer"],
+      "defaultLocations": ["Ahmedabad", "Gandhinagar", "Rajkot", "Surat", "Jamnagar", "Vadodara", "Pune", "Bangalore", "Mumbai", "Remote"],
+      "scraperTimeout": "180 seconds (3 minutes)",
+      "apifyPollInterval": "2 seconds, max 60 attempts",
+      "tokenCacheExpiry": "60 seconds before actual expiration"
+    }
+  }
+}
