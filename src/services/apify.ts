@@ -123,7 +123,7 @@ export async function runIndeedScraper(
     position: keywords,
     location: location,
     country: "IN",
-    maxItemsPerSearch: 100,
+    maxItemsPerSearch: 150,
     saveOnlyUniqueItems: true,
   };
 
@@ -155,7 +155,7 @@ export async function runNaukriScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.naukriActorId, input);
@@ -173,7 +173,7 @@ export async function runGlassdoorScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.glassdoorActorId, input);
@@ -191,7 +191,7 @@ export async function runInternshalaScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.internshalaActorId, input);
@@ -209,7 +209,7 @@ export async function runWellfoundScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.wellfoundActorId, input);
@@ -227,7 +227,7 @@ export async function runFounditScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.founditActorId, input);
@@ -245,7 +245,7 @@ export async function runHiristScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.hiristActorId, input);
@@ -263,7 +263,7 @@ export async function runShineScraper(
   const input = {
     queries: keywords,
     location: location,
-    maxPagesPerQuery: 2,
+    maxPagesPerQuery: 3,
   };
 
   const items = await runScraperViaWorker(config.shineActorId, input);
