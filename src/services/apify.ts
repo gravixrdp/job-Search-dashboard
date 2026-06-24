@@ -309,7 +309,7 @@ export function transformApifyItemToJob(
     title: item.title || "",
     company: item.company || "",
     location: item.location || "",
-    job_type: determineJobType(item.type || ""),
+    job_type: determineJobType(item.type || "", item.location || ""),
     experience_req: item.experience || "",
     url: item.url || "",
     date_posted: item.date || "",
@@ -340,10 +340,11 @@ export function transformApifyItemToLinkedInPost(item: ApifyDatasetItem): Linked
   }
 }
 
-function determineJobType(typeStr: string): Job["job_type"] {
-  const lower = typeStr.toLowerCase()
-  if (lower.includes("remote")) return "Remote"
-  if (lower.includes("hybrid") || lower.includes("wfh")) return "WFH"
+function determineJobType(typeStr: string, locationStr: string = ""): Job["job_type"] {
+  const lowerType = typeStr.toLowerCase()
+  const lowerLoc = locationStr.toLowerCase()
+  if (lowerType.includes("remote") || lowerLoc.includes("remote")) return "Remote"
+  if (lowerType.includes("hybrid") || lowerType.includes("wfh") || lowerLoc.includes("hybrid") || lowerLoc.includes("wfh")) return "WFH"
   return "WFO"
 }
 
