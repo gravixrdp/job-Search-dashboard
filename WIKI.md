@@ -225,7 +225,7 @@ All scraping goes through a **Supabase Edge Function** at `https://wagohholwpjvf
 
 | Function                   | Actor ID Default                          | Input Shape                              |
 | -------------------------- | ----------------------------------------- | ---------------------------------------- |
-| `runLinkedInScraper`       | `curious_coder/linkedin-jobs-scraper`     | `{ searchUrls, scrapeCompanyDetails }`   |
+| `runLinkedInScraper`       | `curious_coder/linkedin-jobs-scraper`     | `{ urls, scrapeCompany }`   |
 | `runIndeedScraper`         | `misceres/indeed-scraper`                 | `{ position, location, country, maxItemsPerSearch }` |
 | `runNaukriScraper`         | `accurate_workstation/naukri-jobs-scraper-free` | `{ queries, location, maxPagesPerQuery }` |
 | `runGlassdoorScraper`      | `fatihai-tools/glassdoor-jobs`            | `{ queries, location, maxPagesPerQuery }` |

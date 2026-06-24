@@ -90,8 +90,8 @@ export async function runLinkedInScraper(
   }
 
   const input = {
-    searchUrls: searchUrls,
-    scrapeCompanyDetails: true,
+    urls: searchUrls,
+    scrapeCompany: true,
   };
 
   const items = await runScraperViaWorker(config.linkedinActorId, input);

@@ -253,7 +253,7 @@
       "Return items to frontend"
     ],
     "supportedPlatforms": [
-      { "platform": "LinkedIn Jobs", "actorId": "curious_coder/linkedin-jobs-scraper", "inputType": "searchUrls" },
+      { "platform": "LinkedIn Jobs", "actorId": "curious_coder/linkedin-jobs-scraper", "inputType": "urls" },
       { "platform": "Indeed", "actorId": "misceres/indeed-scraper", "inputType": "position + location", "limit": "maxItemsPerSearch: 150" },
       { "platform": "Naukri", "actorId": "accurate_workstation/naukri-jobs-scraper-free", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },
       { "platform": "Glassdoor", "actorId": "fatihai-tools/glassdoor-jobs", "inputType": "queries + location", "limit": "maxPagesPerQuery: 3" },

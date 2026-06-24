@@ -216,7 +216,7 @@ GCPConfig: { serviceAccountKey, spreadsheetId }
 ```
 
 ### Supported Platforms (9 job boards + 1 post scraper)
-- LinkedIn Jobs: `curious_coder/linkedin-jobs-scraper` (uses searchUrls)
+- LinkedIn Jobs: `curious_coder/linkedin-jobs-scraper` (uses urls)
 - Indeed: `misceres/indeed-scraper` (uses position + location, maxItemsPerSearch: 150)
 - Naukri: `accurate_workstation/naukri-jobs-scraper-free` (maxPagesPerQuery: 3)
 - Glassdoor: `fatihai-tools/glassdoor-jobs` (maxPagesPerQuery: 3)
