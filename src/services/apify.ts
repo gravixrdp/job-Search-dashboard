@@ -80,21 +80,21 @@ export async function runLinkedInScraper(
   config: { linkedinActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const searchUrls: string[] = []
+  const searchUrls: string[] = [];
   
   // Generate search URLs for each combination of keyword and location
   for (const keyword of filter.keywords) {
     for (const location of filter.locations) {
-      searchUrls.push(buildLinkedInSearchUrl(keyword, location))
+      searchUrls.push(buildLinkedInSearchUrl(keyword, location));
     }
   }
 
   const input = {
     searchUrls: searchUrls,
     scrapeCompanyDetails: true,
-  }
+  };
 
-  const items = await runScraperViaWorker(config.linkedinActorId, input)
+  const items = await runScraperViaWorker(config.linkedinActorId, input);
 
   // Normalize LinkedIn output to common format
   const normalized: ApifyDatasetItem[] = items.map((item) => ({
@@ -106,35 +106,31 @@ export async function runLinkedInScraper(
     type: (item.employmentType as string) || "",
     description: (item.descriptionText as string) || (item.description as string) || "",
     salary: Array.isArray(item.salaryInfo) ? (item.salaryInfo as string[]).join("-") : (item.salary as string) || "",
-  }))
+  }));
 
-  return { items: normalized, platform: "LinkedIn" }
+  return { items: normalized, platform: "LinkedIn" };
 }
 
-// Indeed Scraper - uses position and location
+// Indeed Scraper - uses position and location - optimize to avoid multiple subrequests
 export async function runIndeedScraper(
   config: { indeedActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        position: keyword,
-        location: location,
-        country: "IN",
-        maxItemsPerSearch: 100,
-        saveOnlyUniqueItems: true,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.indeedActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    position: keywords,
+    location: location,
+    country: "IN",
+    maxItemsPerSearch: 100,
+    saveOnlyUniqueItems: true,
+  };
+
+  const items = await runScraperViaWorker(config.indeedActorId, input);
 
   // Normalize Indeed output to common format
-  const normalized: ApifyDatasetItem[] = allItems.map((item) => ({
+  const normalized: ApifyDatasetItem[] = items.map((item) => ({
     title: (item.positionName as string) || (item.title as string) || "",
     company: (item.company as string) || "",
     location: (item.location as string) || "",
@@ -143,170 +139,135 @@ export async function runIndeedScraper(
     type: Array.isArray(item.jobType) ? (item.jobType as string[]).join(", ") : (item.jobType as string) || "",
     description: (item.description as string) || "",
     salary: (item.salary as string) || "",
-  }))
+  }));
 
-  return { items: normalized, platform: "Indeed" }
+  return { items: normalized, platform: "Indeed" };
 }
 
-// Naukri Scraper
+// Naukri Scraper - optimize
 export async function runNaukriScraper(
   config: { naukriActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.naukriActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Naukri" }
+  const items = await runScraperViaWorker(config.naukriActorId, input);
+  return { items: normalizeItems(items), platform: "Naukri" };
 }
 
-// Glassdoor Scraper
+// Glassdoor Scraper - optimize
 export async function runGlassdoorScraper(
   config: { glassdoorActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.glassdoorActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Glassdoor" }
+  const items = await runScraperViaWorker(config.glassdoorActorId, input);
+  return { items: normalizeItems(items), platform: "Glassdoor" };
 }
 
-// Internshala Scraper
+// Internshala Scraper - optimize
 export async function runInternshalaScraper(
   config: { internshalaActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.internshalaActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Internshala" }
+  const items = await runScraperViaWorker(config.internshalaActorId, input);
+  return { items: normalizeItems(items), platform: "Internshala" };
 }
 
-// Wellfound Scraper
+// Wellfound Scraper - optimize
 export async function runWellfoundScraper(
   config: { wellfoundActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.wellfoundActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Wellfound" }
+  const items = await runScraperViaWorker(config.wellfoundActorId, input);
+  return { items: normalizeItems(items), platform: "Wellfound" };
 }
 
-// Foundit Scraper
+// Foundit Scraper - optimize
 export async function runFounditScraper(
   config: { founditActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.founditActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Foundit" }
+  const items = await runScraperViaWorker(config.founditActorId, input);
+  return { items: normalizeItems(items), platform: "Foundit" };
 }
 
-// Hirist Scraper
+// Hirist Scraper - optimize
 export async function runHiristScraper(
   config: { hiristActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.hiristActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Hirist" }
+  const items = await runScraperViaWorker(config.hiristActorId, input);
+  return { items: normalizeItems(items), platform: "Hirist" };
 }
 
-// Shine Scraper
+// Shine Scraper - optimize
 export async function runShineScraper(
   config: { shineActorId: string },
   filter: SearchFilter
 ): Promise<ScraperResult> {
-  const allItems: ApifyDatasetItem[] = [];
-  
-  for (const keyword of filter.keywords) {
-    for (const location of filter.locations) {
-      const input = {
-        queries: keyword,
-        location: location,
-        maxPagesPerQuery: 2,
-      };
+  const keywords = filter.keywords.join(" OR ");
+  const location = filter.locations.join(", ");
 
-      const items = await runScraperViaWorker(config.shineActorId, input);
-      allItems.push(...items);
-    }
-  }
+  const input = {
+    queries: keywords,
+    location: location,
+    maxPagesPerQuery: 2,
+  };
 
-  return { items: normalizeItems(allItems), platform: "Shine" }
+  const items = await runScraperViaWorker(config.shineActorId, input);
+  return { items: normalizeItems(items), platform: "Shine" };
 }
 
 // Normalize items from various scrapers to common format

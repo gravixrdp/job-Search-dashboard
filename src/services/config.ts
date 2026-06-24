@@ -4,7 +4,7 @@ import type { AppConfig, ApifyConfig, GCPConfig } from "@/types"
 
 const defaultApifyConfig: ApifyConfig = {
   apiToken: "",
-  linkedinActorId: "curious_coder/linkedin-jobs-scraper",
+  linkedinActorId: "apify/linkedin-jobs-scraper",
   indeedActorId: "misceres/indeed-scraper",
   naukriActorId: "accurate_workstation/naukri-jobs-scraper-free",
   glassdoorActorId: "fatihai-tools/glassdoor-jobs",
@@ -13,7 +13,7 @@ const defaultApifyConfig: ApifyConfig = {
   founditActorId: "codingfrontend/foundit-jobs-scraper",
   hiristActorId: "logiover/hirist-tech-scraper",
   shineActorId: "unfenced-group/shine-scraper",
-  linkedinPostActorId: "apify/linkedin-post-scraper",
+  linkedinPostActorId: "harvestapi/linkedin-post-search",
 }
 
 const defaultGCPConfig: GCPConfig = {
