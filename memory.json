@@ -2,7 +2,7 @@
   "$schema": "https://example.com/memory-schema-v1.json",
   "metadata": {
     "name": "HuntSync AI Project Memory",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "createdAt": "2026-06-25T00:00:00.000Z",
     "lastUpdatedAt": "2026-06-25T00:00:00.000Z",
     "source": "https://github.com/gravixrdp/job-Search-dashboard",
@@ -247,7 +247,7 @@
       "Return items to frontend"
     ],
     "supportedPlatforms": [
-      { "platform": "LinkedIn Jobs", "actorId": "apify/linkedin-jobs-scraper", "inputType": "searchUrls" },
+      { "platform": "LinkedIn Jobs", "actorId": "curious_coder/linkedin-jobs-scraper", "inputType": "searchUrls" },
       { "platform": "Indeed", "actorId": "misceres/indeed-scraper", "inputType": "position + location" },
       { "platform": "Naukri", "actorId": "accurate_workstation/naukri-jobs-scraper-free", "inputType": "queries + location" },
       { "platform": "Glassdoor", "actorId": "fatihai-tools/glassdoor-jobs", "inputType": "queries + location" },

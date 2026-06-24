@@ -4,7 +4,7 @@ import type { AppConfig, ApifyConfig, GCPConfig } from "@/types"
 
 const defaultApifyConfig: ApifyConfig = {
   apiToken: "",
-  linkedinActorId: "apify/linkedin-jobs-scraper",
+  linkedinActorId: "curious_coder/linkedin-jobs-scraper",
   indeedActorId: "misceres/indeed-scraper",
   naukriActorId: "accurate_workstation/naukri-jobs-scraper-free",
   glassdoorActorId: "fatihai-tools/glassdoor-jobs",

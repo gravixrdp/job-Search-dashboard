@@ -15,7 +15,7 @@ export interface Env {
 
 // ─── Default Apify Actor IDs ────────────────────────────────────────────────
 const DEFAULT_ACTOR_IDS: Record<string, string> = {
-  linkedinActorId: "apify/linkedin-jobs-scraper",
+  linkedinActorId: "curious_coder/linkedin-jobs-scraper",
   indeedActorId: "misceres/indeed-scraper",
   naukriActorId: "accurate_workstation/naukri-jobs-scraper-free",
   glassdoorActorId: "fatihai-tools/glassdoor-jobs",
