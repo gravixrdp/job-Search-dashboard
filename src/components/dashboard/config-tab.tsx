@@ -212,7 +212,7 @@ export function ConfigTab() {
                 type={showApifyToken ? "text" : "password"}
                 value={apifyTokenInput}
                 onChange={(e) => setApifyTokenInput(e.target.value)}
-                placeholder={config.apify.hasToken ? "Enter new token to update, or leave blank" : "Paste your Apify API token here"}
+                placeholder={config.apify.hasToken ? "Enter new token to update existing one" : "Paste your Apify API token here"}
                 className="pr-10"
               />
               <button
@@ -234,6 +234,7 @@ export function ConfigTab() {
               >
                 Apify Console
               </a>.
+              {config.apify.hasToken && " Your current token is stored securely and not visible here."}
             </FieldDescription>
           </Field>
 
