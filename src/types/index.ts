@@ -99,6 +99,8 @@ export interface MailbotConfig {
   imapPassword: string
   forwardFilter: string
   checkInterval: string
+  emailSubject: string
+  emailTemplate: string
 }
 
 export interface AppConfig {

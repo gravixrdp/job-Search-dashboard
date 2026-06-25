@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react"
-import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Save, Bot, Send, Mail, ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Key } from "lucide-react"
+import { CheckCircle2, XCircle, Loader2, Eye, EyeOff, Save, Bot, Send, Mail, ShieldCheck, ShieldAlert, Sparkles, RefreshCw, Key, Upload, FileText } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Field, FieldLabel, FieldDescription } from "@/components/ui/field"
+import { Textarea } from "@/components/ui/textarea"
 
 import type { MailbotConfig } from "@/types"
-import { getConfig, loadConfigFromServer, updateMailbotConfig, testTelegramConnection, testIMAPConnection } from "@/services/config"
+import { getConfig, loadConfigFromServer, updateMailbotConfig, testTelegramConnection, testIMAPConnection, uploadResume, getResumeInfo } from "@/services/config"
 
 export function MailbotTab() {
   const [config, setConfig] = useState<MailbotConfig>(getConfig().mailbot)
@@ -24,6 +25,12 @@ export function MailbotTab() {
   const [imapPassword, setImapPassword] = useState("")
   const [forwardFilter, setForwardFilter] = useState("")
   const [checkInterval, setCheckInterval] = useState("5")
+  const [emailSubject, setEmailSubject] = useState("")
+  const [emailTemplate, setEmailTemplate] = useState("")
+
+  // Resume states
+  const [resumeInfo, setResumeInfo] = useState<{ name: string; size: number; hasResume: boolean } | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
 
   // Visibility states
   const [showToken, setShowToken] = useState(false)
@@ -40,8 +47,16 @@ export function MailbotTab() {
   const [imapTestStatus, setImapTestStatus] = useState<"idle" | "success" | "error">("idle")
   const [imapError, setImapError] = useState("")
 
+  const loadResumeMetadata = async () => {
+    const info = await getResumeInfo()
+    setResumeInfo(info)
+  }
+
   useEffect(() => {
-    loadConfigFromServer().then((loaded) => {
+    Promise.all([
+      loadConfigFromServer(),
+      getResumeInfo()
+    ]).then(([loaded, resume]) => {
       const mailbot = loaded.mailbot
       setConfig(mailbot)
       setTelegramBotToken(mailbot.telegramBotToken || "")
@@ -52,6 +67,9 @@ export function MailbotTab() {
       setImapPassword(mailbot.imapPassword || "")
       setForwardFilter(mailbot.forwardFilter || "")
       setCheckInterval(mailbot.checkInterval || "5")
+      setEmailSubject(mailbot.emailSubject || "")
+      setEmailTemplate(mailbot.emailTemplate || "")
+      setResumeInfo(resume)
       setIsLoading(false)
     })
   }, [])
@@ -126,6 +144,8 @@ export function MailbotTab() {
         imapPassword,
         forwardFilter,
         checkInterval,
+        emailSubject,
+        emailTemplate,
       }
       const saved = await updateMailbotConfig(updates)
       setConfig(saved)
@@ -137,6 +157,39 @@ export function MailbotTab() {
       toast.error(`Failed to save settings: ${e instanceof Error ? e.message : "Unknown error"}`)
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.type !== "application/pdf") {
+      toast.error("Please upload a PDF file only.")
+      return
+    }
+
+    setIsUploading(true)
+    try {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        const base64String = (reader.result as string).split(",")[1]
+        const res = await uploadResume(file.name, base64String)
+        if (res.success) {
+          toast.success("Resume PDF uploaded successfully!")
+          await loadResumeMetadata()
+        } else {
+          toast.error(`Upload failed: ${res.error}`)
+        }
+      }
+      reader.onerror = () => {
+        toast.error("Error reading file.")
+      }
+      reader.readAsDataURL(file)
+    } catch (err) {
+      toast.error("Upload process encountered an error.")
+    } finally {
+      setIsUploading(false)
     }
   }
 
@@ -373,6 +426,101 @@ export function MailbotTab() {
                 )}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* PDF Resume Uploader Card */}
+        <Card className="border border-border/40 bg-card/60 backdrop-blur-md">
+          <CardHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-500">
+                <FileText className="size-4.5" />
+              </div>
+              <div>
+                <CardTitle>Application Resume PDF</CardTitle>
+                <CardDescription>
+                  Upload your primary resume. This PDF will automatically be attached to all dashboard emails.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-col sm:flex-row items-center gap-4 p-4 border border-dashed border-border/60 rounded-xl bg-muted/20">
+              <div className="flex-1 space-y-1">
+                {resumeInfo?.hasResume ? (
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-emerald-500/15 text-emerald-500 border-emerald-500/20">Attached</Badge>
+                    <span className="font-semibold text-sm max-w-[200px] truncate">{resumeInfo.name}</span>
+                    <span className="text-xs text-muted-foreground">({(resumeInfo.size / 1024).toFixed(1)} KB)</span>
+                  </div>
+                ) : (
+                  <div className="text-sm text-amber-500 font-medium">No Resume PDF Attached</div>
+                )}
+                <div className="text-xs text-muted-foreground">Accepts PDF format only, max size 10MB.</div>
+              </div>
+              
+              <div className="relative">
+                <input
+                  type="file"
+                  id="resume-file"
+                  accept=".pdf"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  disabled={isUploading}
+                />
+                <Button asChild variant="outline" className="cursor-pointer gap-2" disabled={isUploading}>
+                  <label htmlFor="resume-file">
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" /> Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="size-4" /> Upload Resume PDF
+                      </>
+                    )}
+                  </label>
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Email Templates Editor Card */}
+        <Card className="border border-border/40 bg-card/60 backdrop-blur-md">
+          <CardHeader>
+            <div className="flex items-center gap-2.5">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-500">
+                <Sparkles className="size-4.5" />
+              </div>
+              <div>
+                <CardTitle>Job Application Template</CardTitle>
+                <CardDescription>
+                  Configure the default HTML structure and subject line for candidate submissions.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Field>
+              <FieldLabel>Subject Line Template</FieldLabel>
+              <Input
+                type="text"
+                placeholder="e.g. DevOps Role Application | {name}"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+              />
+            </Field>
+
+            <Field>
+              <FieldLabel>HTML Template Body (use <code>{"{company}"}</code> to dynamic swap)</FieldLabel>
+              <Textarea
+                value={emailTemplate}
+                onChange={(e) => setEmailTemplate(e.target.value)}
+                className="min-h-[300px] font-mono text-xs leading-relaxed"
+                placeholder="Write your email HTML body here"
+              />
+            </Field>
           </CardContent>
         </Card>
 

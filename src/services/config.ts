@@ -21,6 +21,62 @@ const defaultGCPConfig: GCPConfig = {
   spreadsheetId: "",
 }
 
+const defaultEmailTemplate = `<html><body style="font-family: Arial, sans-serif; font-size: 14px; color: #1a1a1a; line-height: 1.6;">
+
+<p>Dear Hiring Team,</p>
+
+<p>
+I am <strong>Vishal Gurjar</strong>, a <strong>DevOps &amp; Cloud Engineer</strong>
+(B.E. Computer Engineering, graduating June 2026) from Ahmedabad, applying for a
+<strong>DevOps Engineer role</strong> at <strong>{company}</strong>.
+</p>
+
+<p>I have <strong>6 months of internship experience</strong> across <strong>GCP</strong> and <strong>AWS</strong>:</p>
+
+<ul>
+  <li>Built end-to-end <strong>GCP CI/CD pipeline</strong> using <strong>Cloud Build</strong>,
+      <strong>Artifact Registry</strong>, and <strong>Cloud Run</strong> with Cloud SQL,
+      eliminating <strong>100%</strong> of manual deployments.</li>
+
+  <li>Architected the <strong>GKE platform</strong> with <strong>Workload Identity Federation</strong>
+      and <strong>ArgoCD GitOps</strong>, enabling <strong>sub-5-minute rollbacks</strong>.</li>
+
+  <li>Developed <strong>Apigee X proxies</strong> using <strong>Vertex AI Vector Search</strong>
+      for LLM semantic caching and <strong>Cloud DLP</strong> for PII masking.</li>
+
+  <li>Managed <strong>8+ AWS services</strong> (EC2, VPC, S3, ECS, IAM, CloudWatch)
+      maintaining <strong>99.9% uptime</strong>.</li>
+
+  <li>Automated operations via <strong>Shell scripting</strong>, reducing manual effort by
+      <strong>80%</strong>.</li>
+</ul>
+
+<p>
+<strong>Core Skills:</strong> Linux | Docker | Kubernetes | Terraform | Jenkins |
+GitHub Actions | SonarQube | Trivy | Prometheus | Grafana
+</p>
+
+<p>
+<strong>Certification:</strong> Oracle Cloud Infrastructure 2025 Certified DevOps Professional
+</p>
+
+<p>
+Resume is attached for your review.&nbsp;
+<strong>Portfolio:</strong> <a href="https://gurjar-vishal.me">gurjar-vishal.me</a> |
+<strong>GitHub:</strong> <a href="https://github.com/gurjar-vishal">github.com/gurjar-vishal</a>
+</p>
+
+<p>Thank you for your time. I would be happy to connect at your convenience.</p>
+
+<p>
+Regards,<br/>
+<strong>Vishal Gurjar</strong><br/>
++91 9909083139 | vishalgurjar0444@gmail.com<br/>
+<a href="https://linkedin.com/in/vg-ahir-444-devops">linkedin.com/in/vg-ahir-444-devops</a>
+</p>
+
+</body></html>`;
+
 const defaultMailbotConfig: MailbotConfig = {
   telegramBotToken: "",
   telegramChatId: "",
@@ -30,6 +86,8 @@ const defaultMailbotConfig: MailbotConfig = {
   imapPassword: "",
   forwardFilter: "",
   checkInterval: "5",
+  emailSubject: "Application for DevOps Engineer Role | Vishal Gurjar | GCP | AWS | Kubernetes | Terraform | CI/CD",
+  emailTemplate: defaultEmailTemplate,
 }
 
 // Local memory cache
@@ -127,6 +185,43 @@ export async function testIMAPConnection(imapHost: string, imapPort: string): Pr
     return (await response.json()) as { success: boolean; error?: string }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Connection failed" }
+  }
+}
+
+export async function uploadResume(name: string, base64Data: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch("/api/mailbot/resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, base64Data }),
+    })
+    return (await response.json()) as { success: boolean; error?: string }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed to upload resume" }
+  }
+}
+
+export async function getResumeInfo(): Promise<{ name: string; size: number; hasResume: boolean }> {
+  try {
+    const response = await fetch("/api/mailbot/resume")
+    if (!response.ok) throw new Error("Failed to get resume info")
+    return (await response.json()) as { name: string; size: number; hasResume: boolean }
+  } catch (e) {
+    console.error("Failed to fetch resume metadata:", e)
+    return { name: "", size: 0, hasResume: false }
+  }
+}
+
+export async function sendApplicationEmail(to: string, company: string, subject: string, body: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch("/api/mailbot/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, company, subject, body }),
+    })
+    return (await response.json()) as { success: boolean; error?: string }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed to send email" }
   }
 }
 

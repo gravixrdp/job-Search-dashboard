@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react"
-import { Plus, Play, RefreshCw, Trash2, ExternalLink, Loader2 } from "lucide-react"
+import { Plus, Play, RefreshCw, Trash2, ExternalLink, Loader2, Mail } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -29,6 +29,7 @@ import type { Job, SearchFilter, JobType, ApplicationStatus, SourcePlatform, Exp
 import { getConfig, loadConfigFromServer } from "@/services/config"
 import { runLinkedInScraper, runIndeedScraper, runNaukriScraper, runGlassdoorScraper, runInternshalaScraper, runWellfoundScraper, runFounditScraper, runHiristScraper, runShineScraper, transformApifyItemToJob, type ApifyDatasetItem, matchesAllFilters } from "@/services/apify"
 import { appendJobs, getAllJobs, updateJobStatus } from "@/services/google-sheets"
+import { SendEmailDialog } from "@/components/dashboard/send-email-dialog"
 
 const DEFAULT_KEYWORDS = ["DevOps Engineer", "Cloud Engineer", "SRE", "Platform Engineer", "Infrastructure Engineer"]
 const DEFAULT_LOCATIONS = ["Ahmedabad", "Gandhinagar", "Rajkot", "Surat", "Jamnagar", "Vadodara", "Pune", "Bangalore", "Mumbai", "Remote"]
@@ -82,6 +83,12 @@ export function JobSearchTab() {
   const [selectedExperience, setSelectedExperience] = useState<ExperienceLevel>("1-3 years")
   const [customKeyword, setCustomKeyword] = useState("")
   const [customLocation, setCustomLocation] = useState("")
+
+  // Email dialog states
+  const [emailRecipient, setEmailRecipient] = useState("")
+  const [companyName, setCompanyName] = useState("")
+  const [activeJobId, setActiveJobId] = useState("")
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
 
   // Client-side filtered jobs based on selected filters
   const currentFilter = useMemo((): SearchFilter => ({
@@ -509,11 +516,27 @@ export function JobSearchTab() {
                         </Select>
                       </TableCell>
                       <TableCell>
-                        <Button variant="ghost" size="icon" asChild>
-                          <a href={job.url} target="_blank" rel="noopener noreferrer">
-                            <ExternalLink className="size-4" />
-                          </a>
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button variant="ghost" size="icon" asChild>
+                            <a href={job.url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="size-4" />
+                            </a>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Send Application Mail"
+                            onClick={() => {
+                              const normalizedCompany = job.company.replace(/\s+/g, "").toLowerCase()
+                              setEmailRecipient(`hr@${normalizedCompany}.com`)
+                              setCompanyName(job.company)
+                              setActiveJobId(job.job_id)
+                              setIsEmailDialogOpen(true)
+                            }}
+                          >
+                            <Mail className="size-4 text-primary" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -523,6 +546,17 @@ export function JobSearchTab() {
           </ScrollArea>
         </CardContent>
       </Card>
+      <SendEmailDialog
+        isOpen={isEmailDialogOpen}
+        onClose={() => setIsEmailDialogOpen(false)}
+        recipientEmail={emailRecipient}
+        companyName={companyName}
+        onSuccess={() => {
+          if (activeJobId) {
+            handleStatusChange(activeJobId, "Applied")
+          }
+        }}
+      />
     </div>
   )
 }

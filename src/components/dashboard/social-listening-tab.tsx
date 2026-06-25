@@ -21,6 +21,7 @@ import type { LinkedInHiringPost, PostStatus } from "@/types"
 import { getConfig, loadConfigFromServer } from "@/services/config"
 import { runLinkedInPostScraper, transformApifyItemToLinkedInPost, buildBooleanSearchQuery } from "@/services/apify"
 import { appendLinkedInPosts, getAllLinkedInPosts, updatePostStatus } from "@/services/google-sheets"
+import { SendEmailDialog } from "@/components/dashboard/send-email-dialog"
 
 const LOCATION_OPTIONS = [
   "Remote", "Ahmedabad", "Gandhinagar", "Rajkot", "Surat", "Jamnagar", "Vadodara",
@@ -45,6 +46,12 @@ export function SocialListeningTab() {
   const [isScraping, setIsScraping] = useState(false)
   const [selectedLocations, setSelectedLocations] = useState<string[]>([])
   const [dateFilter, setDateFilter] = useState<string>("all")
+
+  // Email dialog states
+  const [emailRecipient, setEmailRecipient] = useState("")
+  const [companyName, setCompanyName] = useState("")
+  const [activePostId, setActivePostId] = useState("")
+  const [isEmailDialogOpen, setIsEmailDialogOpen] = useState(false)
 
   const filteredPosts = useMemo(() => {
     let result = posts
@@ -297,7 +304,14 @@ export function SocialListeningTab() {
                                 {post.email && (
                                   <Badge variant="outline" className="text-xs">
                                     <Mail className="size-3 mr-1" />
-                                    <a href={`mailto:${post.email}`} className="hover:underline">{post.email}</a>
+                                    <span className="cursor-pointer hover:underline" onClick={() => {
+                                      setEmailRecipient(post.email)
+                                      // Extract company name from email domain
+                                      const emailDomain = post.email.split("@")[1]?.split(".")[0] || ""
+                                      setCompanyName(emailDomain.charAt(0).toUpperCase() + emailDomain.slice(1))
+                                      setActivePostId(post.post_id)
+                                      setIsEmailDialogOpen(true)
+                                    }}>{post.email}</span>
                                   </Badge>
                                 )}
                                 {post.experience_req && (
@@ -347,6 +361,22 @@ export function SocialListeningTab() {
                               Open Post
                             </a>
                           </Button>
+                          {post.email && (
+                            <Button 
+                              size="sm" 
+                              className="w-full gap-1 h-8 text-xs bg-primary hover:bg-primary/90"
+                              onClick={() => {
+                                setEmailRecipient(post.email)
+                                const emailDomain = post.email.split("@")[1]?.split(".")[0] || ""
+                                setCompanyName(emailDomain.charAt(0).toUpperCase() + emailDomain.slice(1))
+                                setActivePostId(post.post_id)
+                                setIsEmailDialogOpen(true)
+                              }}
+                            >
+                              <Mail className="size-3" />
+                              Send Mail
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -357,6 +387,17 @@ export function SocialListeningTab() {
           </ScrollArea>
         </CardContent>
       </Card>
+      <SendEmailDialog
+        isOpen={isEmailDialogOpen}
+        onClose={() => setIsEmailDialogOpen(false)}
+        recipientEmail={emailRecipient}
+        companyName={companyName}
+        onSuccess={() => {
+          if (activePostId) {
+            handleStatusChange(activePostId, "Contacted")
+          }
+        }}
+      />
     </div>
   )
 }

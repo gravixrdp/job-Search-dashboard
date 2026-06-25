@@ -225,6 +225,149 @@ async function testImapConnection(host: string, port: number): Promise<{ success
   }
 }
 
+// ─── SMTP Socket Client & Sender ────────────────────────────────────────────
+class SMTPClient {
+  private writer: WritableStreamDefaultWriter<Uint8Array>
+  private reader: ReadableStreamDefaultReader<Uint8Array>
+  private decoder = new TextDecoder()
+  private encoder = new TextEncoder()
+  private buffer = ""
+
+  constructor(socket: any) {
+    this.writer = socket.writable.getWriter()
+    this.reader = socket.readable.getReader()
+  }
+
+  async readLine(): Promise<string> {
+    while (!this.buffer.includes("\r\n")) {
+      const { value, done } = await this.reader.read()
+      if (done) break
+      this.buffer += this.decoder.decode(value, { stream: true })
+    }
+    const idx = this.buffer.indexOf("\r\n")
+    if (idx === -1) {
+      const line = this.buffer
+      this.buffer = ""
+      return line
+    }
+    const line = this.buffer.substring(0, idx)
+    this.buffer = this.buffer.substring(idx + 2)
+    return line
+  }
+
+  async readResponse(): Promise<{ code: number; text: string }> {
+    let text = ""
+    let lastLine = ""
+    while (true) {
+      lastLine = await this.readLine()
+      text += lastLine + "\n"
+      if (lastLine.length >= 4 && lastLine[3] === " ") {
+        break
+      }
+    }
+    const code = parseInt(lastLine.substring(0, 3), 10)
+    return { code, text }
+  }
+
+  async sendLine(line: string) {
+    await this.writer.write(this.encoder.encode(line + "\r\n"))
+  }
+
+  async close() {
+    try { this.writer.releaseLock() } catch {}
+    try { this.reader.releaseLock() } catch {}
+  }
+}
+
+async function sendSmtpEmail(
+  host: string, port: number, user: string, pass: string,
+  to: string, subject: string, htmlBody: string,
+  attachmentName?: string, attachmentBase64?: string
+): Promise<{ success: boolean; error?: string }> {
+  let socket: any = null
+  let client: SMTPClient | null = null
+  try {
+    socket = connect({ hostname: host, port: port }, { secureTransport: "on" })
+    client = new SMTPClient(socket)
+
+    // 1. Read greeting
+    let resp = await client.readResponse()
+    if (resp.code !== 220) throw new Error("Greeting failed: " + resp.text)
+
+    // 2. EHLO
+    await client.sendLine("EHLO localhost")
+    resp = await client.readResponse()
+    if (resp.code !== 250) throw new Error("EHLO failed: " + resp.text)
+
+    // 3. AUTH PLAIN
+    const authStr = btoa(`\0${user}\0${pass}`)
+    await client.sendLine(`AUTH PLAIN ${authStr}`)
+    resp = await client.readResponse()
+    if (resp.code !== 235) throw new Error("Auth failed: " + resp.text)
+
+    // 4. MAIL FROM
+    await client.sendLine(`MAIL FROM:<${user}>`)
+    resp = await client.readResponse()
+    if (resp.code !== 250) throw new Error("MAIL FROM failed: " + resp.text)
+
+    // 5. RCPT TO
+    await client.sendLine(`RCPT TO:<${to}>`)
+    resp = await client.readResponse()
+    if (resp.code !== 250) throw new Error("RCPT TO failed: " + resp.text)
+
+    // 6. DATA
+    await client.sendLine("DATA")
+    resp = await client.readResponse()
+    if (resp.code !== 354) throw new Error("DATA command failed: " + resp.text)
+
+    // 7. Send MIME Message
+    const boundary = "----=_Part_" + Math.random().toString(36).substring(2)
+    const emailParts = [
+      `MIME-Version: 1.0`,
+      `From: ${user}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      ``,
+      `--${boundary}`,
+      `Content-Type: text/html; charset="UTF-8"`,
+      `Content-Transfer-Encoding: 7bit`,
+      ``,
+      htmlBody,
+      ``
+    ]
+
+    if (attachmentBase64 && attachmentName) {
+      emailParts.push(
+        `--${boundary}`,
+        `Content-Type: application/pdf; name="${attachmentName}"`,
+        `Content-Transfer-Encoding: base64`,
+        `Content-Disposition: attachment; filename="${attachmentName}"`,
+        ``,
+        attachmentBase64,
+        ``
+      )
+    }
+
+    emailParts.push(`--${boundary}--`)
+    const rawEmail = emailParts.join("\r\n")
+
+    await client.sendLine(rawEmail)
+    await client.sendLine(".")
+    resp = await client.readResponse()
+    if (resp.code !== 250) throw new Error("Sending content failed: " + resp.text)
+
+    await client.sendLine("QUIT")
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "SMTP send failed" }
+  } finally {
+    if (client) {
+      try { await client.close() } catch {}
+    }
+  }
+}
+
 // ─── Apify Proxy ────────────────────────────────────────────────────────────
 async function runApifyScraper(apiToken: string, actorId: string, input: Record<string, unknown>): Promise<unknown> {
   // 1. Start the run WITHOUT blocking (waitForFinish=0)
@@ -517,6 +660,8 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
         imapPassword: mailbotParsed.imapPassword ? "***" : "",
         forwardFilter: mailbotParsed.forwardFilter || "",
         checkInterval: mailbotParsed.checkInterval || "5",
+        emailSubject: mailbotParsed.emailSubject || "",
+        emailTemplate: mailbotParsed.emailTemplate || "",
       }
 
       return json({
@@ -579,6 +724,8 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
           imapPassword: body.mailbot.imapPassword === "***" ? (existingMailbot.imapPassword || "") : (body.mailbot.imapPassword || ""),
           forwardFilter: body.mailbot.forwardFilter || "",
           checkInterval: body.mailbot.checkInterval || "5",
+          emailSubject: body.mailbot.emailSubject || "",
+          emailTemplate: body.mailbot.emailTemplate || "",
         }
 
         await env.DB.prepare(
@@ -645,6 +792,96 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
       return json(check)
     } catch (e) {
       return json({ success: false, error: e instanceof Error ? e.message : "Connection failed" })
+    }
+  }
+
+  // ── Mailbot Resume and Send Endpoints ────────────────────────────────────
+  if (path === "/api/mailbot/resume" && method === "POST") {
+    try {
+      const body = await getBody<{ name: string; base64Data: string }>(req)
+      if (!body.name || !body.base64Data) {
+        return error("Name and base64 data are required")
+      }
+      const now = new Date().toISOString()
+      const sizeBytes = Math.floor(body.base64Data.length * 0.75)
+      
+      await env.DB.prepare(
+        `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      ).bind("mailbot_resume_name", body.name, now).run()
+
+      await env.DB.prepare(
+        `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      ).bind("mailbot_resume_pdf", body.base64Data, now).run()
+
+      await env.DB.prepare(
+        `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+      ).bind("mailbot_resume_size", String(sizeBytes), now).run()
+
+      return json({ success: true })
+    } catch (e) {
+      return error(e instanceof Error ? e.message : "Failed to save resume", 500)
+    }
+  }
+
+  if (path === "/api/mailbot/resume" && method === "GET") {
+    try {
+      const result = await env.DB.prepare("SELECT key, value FROM config WHERE key IN ('mailbot_resume_name', 'mailbot_resume_size')").all()
+      const metadata: Record<string, string> = {}
+      for (const row of result.results as Array<{ key: string; value: string }>) {
+        metadata[row.key] = row.value
+      }
+      const hasResume = !!metadata.mailbot_resume_name
+      return json({
+        name: metadata.mailbot_resume_name || "",
+        size: metadata.mailbot_resume_size ? parseInt(metadata.mailbot_resume_size, 10) : 0,
+        hasResume
+      })
+    } catch (e) {
+      return error(e instanceof Error ? e.message : "Failed to fetch resume metadata", 500)
+    }
+  }
+
+  if (path === "/api/mailbot/send" && method === "POST") {
+    try {
+      const body = await getBody<{ to: string; company: string; subject: string; body: string }>(req)
+      if (!body.to || !body.company || !body.subject || !body.body) {
+        return error("To email, company name, subject, and body are required")
+      }
+
+      const configRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_config").first() as { value: string } | null
+      if (!configRow?.value) {
+        return error("Mailbot SMTP configuration is missing. Configure it in the Mailbot tab first.")
+      }
+      const mailbot = JSON.parse(configRow.value)
+      
+      const smtpUser = mailbot.imapUser
+      const smtpPass = mailbot.imapPassword
+      let smtpHost = mailbot.imapHost || "smtp.gmail.com"
+      smtpHost = smtpHost.replace(/^imap\./i, "smtp.")
+      const smtpPort = 465
+
+      if (!smtpUser || !smtpPass) {
+        return error("Email address and App Password are required in Mailbot configuration.")
+      }
+
+      const resumeNameRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_resume_name").first() as { value: string } | null
+      const resumePdfRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_resume_pdf").first() as { value: string } | null
+      
+      const attachmentName = resumeNameRow?.value || undefined
+      const attachmentBase64 = resumePdfRow?.value || undefined
+
+      const result = await sendSmtpEmail(
+        smtpHost, smtpPort, smtpUser, smtpPass,
+        body.to, body.subject, body.body,
+        attachmentName, attachmentBase64
+      )
+
+      return json(result)
+    } catch (e) {
+      return error(e instanceof Error ? e.message : "SMTP delivery failed", 500)
     }
   }
 
