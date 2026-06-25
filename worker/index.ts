@@ -851,37 +851,89 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
         return error("To email, company name, subject, and body are required")
       }
 
+      // Load Gmail credentials from mailbot_config
       const configRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_config").first() as { value: string } | null
       if (!configRow?.value) {
-        return error("Mailbot SMTP configuration is missing. Configure it in the Mailbot tab first.")
+        return error("Gmail credentials not configured. Add your Gmail address and App Password in the Mailbot tab.")
       }
       const mailbot = JSON.parse(configRow.value)
-      
-      const smtpUser = mailbot.imapUser
-      const smtpPass = mailbot.imapPassword
-      let smtpHost = mailbot.imapHost || "smtp.gmail.com"
-      smtpHost = smtpHost.replace(/^imap\./i, "smtp.")
-      const smtpPort = 465
+      const smtpUser: string = mailbot.gmailUser || mailbot.imapUser || ""
+      const smtpPass: string = mailbot.gmailPass || mailbot.imapPassword || ""
 
       if (!smtpUser || !smtpPass) {
-        return error("Email address and App Password are required in Mailbot configuration.")
+        return error("Gmail address and App Password are required in Mailbot settings.")
       }
 
+      // ── Duplicate domain check ───────────────────────────────────────
+      const domain = body.to.split("@")[1]?.toLowerCase() || ""
+      if (domain) {
+        const existing = await env.DB.prepare(
+          "SELECT email, sent_at FROM sent_log WHERE domain = ? LIMIT 1"
+        ).bind(domain).first() as { email: string; sent_at: string } | null
+        if (existing) {
+          return json({
+            success: false,
+            duplicate: true,
+            error: `Already sent to ${domain} (${existing.email}) on ${existing.sent_at}. Duplicate blocked.`
+          })
+        }
+      }
+
+      // Load resume
       const resumeNameRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_resume_name").first() as { value: string } | null
       const resumePdfRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_resume_pdf").first() as { value: string } | null
-      
       const attachmentName = resumeNameRow?.value || undefined
       const attachmentBase64 = resumePdfRow?.value || undefined
 
       const result = await sendSmtpEmail(
-        smtpHost, smtpPort, smtpUser, smtpPass,
+        "smtp.gmail.com", 465, smtpUser, smtpPass,
         body.to, body.subject, body.body,
         attachmentName, attachmentBase64
       )
 
+      // ── Record in sent_log if success ────────────────────────────────
+      if (result.success && domain) {
+        const now = new Date().toISOString().replace("T", " ").slice(0, 19)
+        // company name from domain (capitalize first meaningful part)
+        const parts = domain.split(".")
+        const skip = new Set(["mail", "careers", "jobs", "hr", "recruit", "hiring", "apply", "talent", "info", "work", "team"])
+        const meaningful = parts.slice(0, -1).filter(p => !skip.has(p))
+        const company = (meaningful[meaningful.length - 1] || parts[0] || domain)
+          .replace(/^./, c => c.toUpperCase())
+        try {
+          await env.DB.prepare(
+            `INSERT INTO sent_log (domain, email, company, sent_at, status)
+             VALUES (?, ?, ?, ?, 'sent')
+             ON CONFLICT(domain) DO UPDATE SET email = excluded.email, company = excluded.company, sent_at = excluded.sent_at, status = 'sent'`
+          ).bind(domain, body.to.toLowerCase(), body.company || company, now).run()
+        } catch { /* ignore log write errors */ }
+      }
+
       return json(result)
     } catch (e) {
       return error(e instanceof Error ? e.message : "SMTP delivery failed", 500)
+    }
+  }
+
+  // ── Sent Log Routes ─────────────────────────────────────────────────────
+  if (path === "/api/mailbot/sent-log" && method === "GET") {
+    try {
+      const result = await env.DB.prepare(
+        "SELECT domain, email, company, sent_at, status FROM sent_log ORDER BY sent_at DESC"
+      ).all()
+      return json({ entries: result.results })
+    } catch (e) {
+      // Table might not exist yet – return empty
+      return json({ entries: [] })
+    }
+  }
+
+  if (path === "/api/mailbot/sent-log" && method === "DELETE") {
+    try {
+      await env.DB.exec("DELETE FROM sent_log")
+      return json({ success: true })
+    } catch (e) {
+      return error(e instanceof Error ? e.message : "Failed to clear sent log", 500)
     }
   }
 

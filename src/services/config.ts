@@ -78,14 +78,8 @@ Regards,<br/>
 </body></html>`;
 
 const defaultMailbotConfig: MailbotConfig = {
-  telegramBotToken: "",
-  telegramChatId: "",
-  imapHost: "",
-  imapPort: "993",
-  imapUser: "",
-  imapPassword: "",
-  forwardFilter: "",
-  checkInterval: "5",
+  gmailUser: "",
+  gmailPass: "",
   emailSubject: "Application for DevOps Engineer Role | Vishal Gurjar | GCP | AWS | Kubernetes | Terraform | CI/CD",
   emailTemplate: defaultEmailTemplate,
 }
@@ -162,32 +156,6 @@ export async function updateMailbotConfig(updates: Partial<MailbotConfig>): Prom
   return newMailbotConfig
 }
 
-export async function testTelegramConnection(telegramBotToken: string, telegramChatId: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const response = await fetch("/api/mailbot/test-telegram", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ telegramBotToken, telegramChatId }),
-    })
-    return (await response.json()) as { success: boolean; error?: string }
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "Connection failed" }
-  }
-}
-
-export async function testIMAPConnection(imapHost: string, imapPort: string): Promise<{ success: boolean; error?: string }> {
-  try {
-    const response = await fetch("/api/mailbot/test-imap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imapHost, imapPort }),
-    })
-    return (await response.json()) as { success: boolean; error?: string }
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : "Connection failed" }
-  }
-}
-
 export async function uploadResume(name: string, base64Data: string): Promise<{ success: boolean; error?: string }> {
   try {
     const response = await fetch("/api/mailbot/resume", {
@@ -222,6 +190,26 @@ export async function sendApplicationEmail(to: string, company: string, subject:
     return (await response.json()) as { success: boolean; error?: string }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Failed to send email" }
+  }
+}
+
+export async function getSentLog(): Promise<{ entries: import("@/types").SentLogEntry[] }> {
+  try {
+    const response = await fetch("/api/mailbot/sent-log")
+    if (!response.ok) throw new Error("Failed to load sent log")
+    return (await response.json()) as { entries: import("@/types").SentLogEntry[] }
+  } catch (e) {
+    console.error("Failed to fetch sent log:", e)
+    return { entries: [] }
+  }
+}
+
+export async function clearSentLog(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch("/api/mailbot/sent-log", { method: "DELETE" })
+    return (await response.json()) as { success: boolean; error?: string }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed to clear log" }
   }
 }
 

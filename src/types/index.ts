@@ -91,16 +91,18 @@ export interface GCPConfig {
 }
 
 export interface MailbotConfig {
-  telegramBotToken: string
-  telegramChatId: string
-  imapHost: string
-  imapPort: string
-  imapUser: string
-  imapPassword: string
-  forwardFilter: string
-  checkInterval: string
+  gmailUser: string
+  gmailPass: string
   emailSubject: string
   emailTemplate: string
+}
+
+export interface SentLogEntry {
+  domain: string
+  email: string
+  company: string
+  sent_at: string
+  status: "sent" | "bounced"
 }
 
 export interface AppConfig {
@@ -177,4 +179,4 @@ export interface ConnectionStatus {
   error?: string
 }
 
-export type ActiveTab = "jobs" | "social" | "config"
+export type ActiveTab = "jobs" | "social" | "config" | "mailbot"

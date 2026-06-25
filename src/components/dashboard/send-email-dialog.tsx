@@ -73,10 +73,13 @@ export function SendEmailDialog({
     }
     setIsSending(true)
     try {
-      const res = await sendApplicationEmail(to, company, subject, body)
+      const res = await sendApplicationEmail(to, company, subject, body) as { success: boolean; duplicate?: boolean; error?: string }
       if (res.success) {
         toast.success("Application email sent successfully!")
         if (onSuccess) onSuccess()
+        onClose()
+      } else if (res.duplicate) {
+        toast.warning(`Duplicate blocked: ${res.error}`, { duration: 6000 })
         onClose()
       } else {
         toast.error(`Email delivery failed: ${res.error}`)
@@ -97,7 +100,7 @@ export function SendEmailDialog({
             Send Job Application Email
           </DialogTitle>
           <DialogDescription>
-            Verify and customize the application details before sending. Emails are sent using your configured SMTP settings.
+          Verify and customize the application details before sending. Emails are sent via your Gmail account. Duplicate sends to the same company domain are automatically blocked.
           </DialogDescription>
         </DialogHeader>
 

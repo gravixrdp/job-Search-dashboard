@@ -46,3 +46,15 @@ CREATE TABLE IF NOT EXISTS filters (
   created_at TEXT DEFAULT '',
   updated_at TEXT DEFAULT ''
 );
+
+-- Mailbot sent log: duplicate detection by domain
+CREATE TABLE IF NOT EXISTS sent_log (
+  domain TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  company TEXT DEFAULT '',
+  sent_at TEXT NOT NULL,
+  status TEXT DEFAULT 'sent'
+);
+
+CREATE INDEX IF NOT EXISTS idx_sent_log_sent_at ON sent_log(sent_at DESC);
+
