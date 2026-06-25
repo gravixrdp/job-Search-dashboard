@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   CheckCircle2, XCircle, Loader2, Eye, EyeOff, Save, Send, Mail,
   ShieldCheck, ShieldAlert, Sparkles, Upload, FileText, Trash2,
@@ -16,7 +16,8 @@ import { Textarea } from "@/components/ui/textarea"
 import type { MailbotConfig, SentLogEntry } from "@/types"
 import {
   getConfig, loadConfigFromServer, updateMailbotConfig,
-  uploadResume, getResumeInfo, getSentLog, clearSentLog
+  uploadResume, getResumeInfo, getSentLog, clearSentLog,
+  deleteFromSentLog, defaultMailbotConfig
 } from "@/services/config"
 
 export function MailbotTab() {
@@ -43,6 +44,22 @@ export function MailbotTab() {
 
   // Save state
   const [isSaving, setIsSaving] = useState(false)
+
+  // Direct mailer states
+  const [directMailMode, setDirectMailMode] = useState<"single" | "bulk">("single")
+  const [singleEmail, setSingleEmail] = useState("")
+  const [singleCompany, setSingleCompany] = useState("")
+  const [isSingleSending, setIsSingleSending] = useState(false)
+
+  // Bulk sender states
+  const [bulkEmailsText, setBulkEmailsText] = useState("")
+  const [bulkDelay, setBulkDelay] = useState(10)
+  const [isBulkRunning, setIsBulkRunning] = useState(false)
+  const [bulkCancel, setBulkCancel] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0, sent: 0, skipped: 0, failed: 0 })
+  const [bulkLog, setBulkLog] = useState<Array<{ email: string; company: string; status: "pending" | "sending" | "sent" | "skipped" | "failed"; detail: string }>>([])
+
+  const bulkCancelRef = useRef(false)
 
   const loadSentLog = useCallback(async () => {
     setIsLoadingLog(true)
@@ -123,6 +140,200 @@ export function MailbotTab() {
       }
     } finally {
       setIsClearingLog(false)
+    }
+  }
+
+  // Deletes single log item
+  const handleDeleteDomainLog = async (domain: string) => {
+    if (!confirm(`Delete sent log for ${domain}? This will allow you to send emails to this domain again.`)) return
+    try {
+      const res = await deleteFromSentLog(domain)
+      if (res.success) {
+        toast.success(`Deleted ${domain} from Sent Log.`)
+        loadSentLog()
+      } else {
+        toast.error(`Delete failed: ${res.error}`)
+      }
+    } catch (e) {
+      toast.error(`Error: ${e instanceof Error ? e.message : "Unknown error"}`)
+    }
+  }
+
+  // Resets template values to codebase defaults
+  const handleResetTemplate = () => {
+    if (!confirm("Are you sure you want to reset the subject and body to the default DevOps template? Your current edits will be overwritten.")) return
+    setEmailSubject(defaultMailbotConfig.emailSubject)
+    setEmailTemplate(defaultMailbotConfig.emailTemplate)
+    toast.success("Template reset to default values! Click 'Save Settings' to save to server.")
+  }
+
+  // Helper: Guess company from email domain
+  const guessCompanyFromEmail = (email: string): string => {
+    if (!email || !email.includes("@")) return ""
+    const domain = email.split("@")[1]?.toLowerCase() || ""
+    const parts = domain.split(".")
+    const skip = new Set(["mail", "careers", "jobs", "hr", "recruit", "hiring", "apply", "talent", "info", "work", "team"])
+    const meaningful = parts.slice(0, -1).filter(p => !skip.has(p))
+    const company = meaningful[meaningful.length - 1] || parts[0] || domain
+    return company.replace(/^./, c => c.toUpperCase())
+  }
+
+  const handleSingleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value
+    setSingleEmail(val)
+    if (val.includes("@")) {
+      const guessed = guessCompanyFromEmail(val)
+      setSingleCompany(guessed)
+    } else {
+      setSingleCompany("")
+    }
+  }
+
+  const handleSendSingle = async (force = false) => {
+    if (!singleEmail || !singleCompany) {
+      toast.error("Please fill in the email and company name.")
+      return
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(singleEmail.trim())) {
+      toast.error("Please enter a valid email address.")
+      return
+    }
+
+    setIsSingleSending(true)
+    try {
+      const subject = emailSubject
+      const body = emailTemplate.replace(/{company}/g, singleCompany).replace(/{company_name}/g, singleCompany)
+
+      const res = await sendApplicationEmail(singleEmail.trim(), singleCompany, subject, body, force)
+      if (res.success) {
+        toast.success(`Email sent to ${singleCompany}!`)
+        setSingleEmail("")
+        setSingleCompany("")
+        loadSentLog()
+      } else {
+        toast.error(res.error || "Failed to send email.")
+      }
+    } catch (e) {
+      toast.error(`Error: ${e instanceof Error ? e.message : "Unknown error"}`)
+    } finally {
+      setIsSingleSending(false)
+    }
+  }
+
+  const handleCancelBulk = () => {
+    bulkCancelRef.current = true
+    setBulkCancel(true)
+    toast.warning("Cancellation requested. Stopping after current send.")
+  }
+
+  const handleStartBulk = async () => {
+    const rawEmails = bulkEmailsText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []
+    const uniqueEmails = Array.from(new Set(rawEmails.map(e => e.toLowerCase().trim())))
+
+    if (uniqueEmails.length === 0) {
+      toast.error("No valid email addresses found in text.")
+      return
+    }
+
+    setIsBulkRunning(true)
+    bulkCancelRef.current = false
+    setBulkCancel(false)
+    
+    const total = uniqueEmails.length
+    let sent = 0
+    let skipped = 0
+    let failed = 0
+
+    setBulkProgress({ current: 0, total, sent, skipped, failed })
+    setBulkLog([])
+
+    toast.info(`Starting bulk application campaign for ${total} companies...`)
+
+    for (let i = 0; i < total; i++) {
+      if (bulkCancelRef.current) {
+        setBulkLog(prev => [
+          { email: "campaign", company: "Aborted", status: "failed", detail: "Campaign was canceled by the user." },
+          ...prev
+        ])
+        break
+      }
+
+      const email = uniqueEmails[i]
+      const company = guessCompanyFromEmail(email)
+      const domain = email.split("@")[1]?.toLowerCase() || ""
+
+      // Update log to show we are currently sending to this one
+      setBulkLog(prev => [
+        { email, company, status: "sending", detail: "Checking domain and delivering..." },
+        ...prev
+      ])
+
+      // Check duplicate
+      const isDup = sentLog.some(e => e.domain === domain)
+      if (isDup) {
+        skipped++
+        setBulkProgress(prev => ({ ...prev, current: i + 1, skipped }))
+        setBulkLog(prev => {
+          const filtered = prev.filter(l => l.email !== email)
+          return [
+            { email, company, status: "skipped", detail: "Duplicate domain blocked by guard." },
+            ...filtered
+          ]
+        })
+        continue
+      }
+
+      try {
+        const subject = emailSubject
+        const body = emailTemplate.replace(/{company}/g, company).replace(/{company_name}/g, company)
+        
+        const res = await sendApplicationEmail(email, company, subject, body, false)
+        if (res.success) {
+          sent++
+          setBulkProgress(prev => ({ ...prev, current: i + 1, sent }))
+          setBulkLog(prev => {
+            const filtered = prev.filter(l => l.email !== email)
+            return [
+              { email, company, status: "sent", detail: "Application email sent successfully!" },
+              ...filtered
+            ]
+          })
+          await loadSentLog()
+        } else {
+          failed++
+          setBulkProgress(prev => ({ ...prev, current: i + 1, failed }))
+          setBulkLog(prev => {
+            const filtered = prev.filter(l => l.email !== email)
+            return [
+              { email, company, status: "failed", detail: res.error || "SMTP send failed." },
+              ...filtered
+            ]
+          })
+        }
+      } catch (e) {
+        failed++
+        setBulkProgress(prev => ({ ...prev, current: i + 1, failed }))
+        setBulkLog(prev => {
+          const filtered = prev.filter(l => l.email !== email)
+          return [
+            { email, company, status: "failed", detail: e instanceof Error ? e.message : "SMTP send error." },
+            ...filtered
+          ]
+        })
+      }
+
+      // Delay gap if not the last item
+      if (i < total - 1 && !bulkCancelRef.current) {
+        await new Promise(resolve => setTimeout(resolve, bulkDelay * 1000))
+      }
+    }
+
+    setIsBulkRunning(false)
+    if (bulkCancelRef.current) {
+      toast.warning("Bulk application campaign canceled.")
+    } else {
+      toast.success(`Bulk campaign complete! Sent: ${sent}, Skipped: ${skipped}, Failed: ${failed}`)
     }
   }
 
@@ -220,6 +431,274 @@ export function MailbotTab() {
           </CardContent>
         </Card>
 
+        {/* ── Direct Job Application Mailer ─────────────────────────── */}
+        <Card className="border border-border/40 bg-card/60 backdrop-blur-md overflow-hidden">
+          <CardHeader className="pb-3 border-b border-border/30">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Send className="size-4.5" />
+                </div>
+                <div>
+                  <CardTitle>Direct Job Application Mailer</CardTitle>
+                  <CardDescription>
+                    Send application emails directly to specific HR contacts.
+                  </CardDescription>
+                </div>
+              </div>
+              <div className="flex p-0.5 bg-muted/60 rounded-lg self-start sm:self-auto border border-border/30">
+                <Button
+                  variant={directMailMode === "single" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setDirectMailMode("single")}
+                  className="px-3 py-1 h-7 text-xs rounded-md"
+                >
+                  Single Email
+                </Button>
+                <Button
+                  variant={directMailMode === "bulk" ? "secondary" : "ghost"}
+                  size="sm"
+                  onClick={() => setDirectMailMode("bulk")}
+                  className="px-3 py-1 h-7 text-xs rounded-md"
+                >
+                  Bulk Emails
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4 space-y-4">
+            {!isConfigured && (
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-600">
+                <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+                <span>You must configure your Gmail credentials above before sending emails.</span>
+              </div>
+            )}
+
+            {directMailMode === "single" ? (
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel>HR Email Address</FieldLabel>
+                    <div className="relative">
+                      <AtSign className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                      <Input
+                        type="email"
+                        placeholder="hr@company.com"
+                        value={singleEmail}
+                        onChange={handleSingleEmailChange}
+                        disabled={!isConfigured || isSingleSending}
+                        className="pl-8"
+                      />
+                    </div>
+                  </Field>
+
+                  <Field>
+                    <FieldLabel>Company Name</FieldLabel>
+                    <div className="relative">
+                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+                      <Input
+                        type="text"
+                        placeholder="Company"
+                        value={singleCompany}
+                        onChange={(e) => setSingleCompany(e.target.value)}
+                        disabled={!isConfigured || isSingleSending}
+                        className="pl-8"
+                      />
+                    </div>
+                  </Field>
+                </div>
+
+                {/* Duplicate Check Indicator */}
+                {singleEmail && (
+                  (() => {
+                    const domain = singleEmail.split("@")[1]?.toLowerCase() || ""
+                    const existing = sentLog.find(e => e.domain === domain)
+                    if (existing) {
+                      return (
+                        <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-500/5 border border-amber-500/20 text-xs text-amber-600">
+                          <AlertTriangle className="size-3.5 mt-0.5 shrink-0" />
+                          <div>
+                            <strong>Duplicate Detected!</strong> An email was already sent to <strong>{existing.company}</strong> ({domain}) on <strong>{existing.sent_at}</strong>.
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  })()
+                )}
+
+                {/* Email Preview Details */}
+                {singleEmail && (
+                  <div className="border border-border/40 rounded-xl overflow-hidden bg-muted/10 text-xs">
+                    <div className="bg-muted/30 px-3 py-2 border-b border-border/30 flex items-center justify-between text-muted-foreground font-medium">
+                      <span>Email Preview (Auto-generated from template)</span>
+                      <Badge variant="outline" className="text-[10px] bg-primary/5 text-primary border-primary/10">
+                        {resumeInfo?.hasResume ? "Resume Attached" : "No Resume Attached"}
+                      </Badge>
+                    </div>
+                    <div className="p-3 space-y-2">
+                      <div>
+                        <span className="text-muted-foreground font-semibold">Subject: </span>
+                        <span className="text-foreground font-medium">{emailSubject}</span>
+                      </div>
+                      <div className="h-px bg-border/20 my-1" />
+                      <div className="text-muted-foreground font-semibold">Body HTML preview:</div>
+                      <div
+                        className="p-3 bg-background/50 border border-border/20 rounded-lg max-h-40 overflow-y-auto font-mono text-[10px] text-muted-foreground whitespace-pre-wrap"
+                      >
+                        {emailTemplate.replace(/{company}/g, singleCompany || "[Company Name]").replace(/{company_name}/g, singleCompany || "[Company Name]")}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  {(() => {
+                    const domain = singleEmail.split("@")[1]?.toLowerCase() || ""
+                    const isDup = !!sentLog.find(e => e.domain === domain)
+                    return (
+                      <Button
+                        onClick={() => handleSendSingle(isDup)}
+                        disabled={!isConfigured || !singleEmail || !singleCompany || isSingleSending}
+                        className={`w-full sm:w-auto px-6 gap-2 ${isDup ? "bg-amber-600 hover:bg-amber-700 text-white border-none" : ""}`}
+                      >
+                        {isSingleSending ? (
+                          <><Loader2 className="size-4 animate-spin" /> Sending...</>
+                        ) : isDup ? (
+                          <><AlertTriangle className="size-4" /> Send Anyway (Force)</>
+                        ) : (
+                          <><Send className="size-4" /> Send Application</>
+                        )}
+                      </Button>
+                    )
+                  })()}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <Field>
+                  <FieldLabel>Bulk Emails List</FieldLabel>
+                  <Textarea
+                    placeholder="Enter email addresses (one per line, space separated, or comma-separated)&#10;e.g.&#10;hr@google.com&#10;recruitment@microsoft.com, jobs@startup.io"
+                    value={bulkEmailsText}
+                    onChange={(e) => setBulkEmailsText(e.target.value)}
+                    disabled={!isConfigured || isBulkRunning}
+                    className="min-h-[140px] font-mono text-xs"
+                  />
+                  <FieldDescription>
+                    We'll extract all valid emails, automatically parse company names, skip duplicates, and deliver them in sequence.
+                  </FieldDescription>
+                </Field>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">Delay between sends:</span>
+                      <Input
+                        type="number"
+                        min="1"
+                        max="120"
+                        value={bulkDelay}
+                        onChange={(e) => setBulkDelay(parseInt(e.target.value) || 10)}
+                        disabled={!isConfigured || isBulkRunning}
+                        className="w-16 h-8 text-center px-1"
+                      />
+                      <span className="text-xs text-muted-foreground">seconds</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    {isBulkRunning ? (
+                      <Button
+                        variant="destructive"
+                        onClick={handleCancelBulk}
+                        className="gap-2"
+                      >
+                        <XCircle className="size-4" /> Cancel Campaign
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleStartBulk}
+                        disabled={!isConfigured || !bulkEmailsText.trim()}
+                        className="px-6 gap-2"
+                      >
+                        <Send className="size-4" /> Start Bulk Send
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bulk Progress Indicator */}
+                {isBulkRunning && (
+                  <div className="space-y-2 border border-border/40 bg-muted/10 rounded-xl p-3 text-xs">
+                    <div className="flex items-center justify-between font-semibold">
+                      <span className="flex items-center gap-1.5 text-primary">
+                        <Loader2 className="size-3.5 animate-spin" /> Bulk Campaign Processing
+                      </span>
+                      <span>{bulkProgress.current} / {bulkProgress.total} processed</span>
+                    </div>
+
+                    <div className="w-full bg-muted rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="bg-primary h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 text-center text-[10px] text-muted-foreground pt-1">
+                      <div className="bg-emerald-500/5 border border-emerald-500/10 rounded p-1">
+                        <div className="font-bold text-emerald-500">{bulkProgress.sent}</div>
+                        <div>Sent</div>
+                      </div>
+                      <div className="bg-amber-500/5 border border-amber-500/10 rounded p-1">
+                        <div className="font-bold text-amber-500">{bulkProgress.skipped}</div>
+                        <div>Skipped</div>
+                      </div>
+                      <div className="bg-red-500/5 border border-red-500/10 rounded p-1">
+                        <div className="font-bold text-red-500">{bulkProgress.failed}</div>
+                        <div>Failed</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bulk Activity Log */}
+                {(bulkLog.length > 0) && (
+                  <div className="border border-border/40 rounded-xl overflow-hidden text-xs">
+                    <div className="bg-muted/30 px-3 py-2 border-b border-border/30 font-medium text-muted-foreground flex justify-between items-center">
+                      <span>Campaign Logs</span>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setBulkLog([])}
+                        className="h-auto p-0 text-[10px] text-muted-foreground hover:text-foreground"
+                      >
+                        Clear logs
+                      </Button>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto p-2 font-mono text-[10px] space-y-1 bg-background/50">
+                      {bulkLog.map((log, i) => (
+                        <div key={i} className="flex justify-between items-start border-b border-border/10 py-1 last:border-0">
+                          <div>
+                            <span className="font-semibold text-foreground">{log.company}</span>
+                            <span className="text-muted-foreground ml-1">({log.email})</span>
+                            <div className="text-[9px] text-muted-foreground">{log.detail}</div>
+                          </div>
+                          <div>
+                            {log.status === "sending" && <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 text-[9px] h-4">Sending</Badge>}
+                            {log.status === "sent" && <Badge variant="outline" className="bg-emerald-500/5 text-emerald-500 border-emerald-500/20 text-[9px] h-4">Sent</Badge>}
+                            {log.status === "skipped" && <Badge variant="outline" className="bg-amber-500/5 text-amber-500 border-amber-500/20 text-[9px] h-4">Skipped</Badge>}
+                            {log.status === "failed" && <Badge variant="outline" className="bg-red-500/5 text-red-500 border-red-500/20 text-[9px] h-4">Failed</Badge>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
         {/* ── PDF Resume Upload ──────────────────────────────────────── */}
         <Card className="border border-border/40 bg-card/60 backdrop-blur-md">
           <CardHeader>
@@ -269,16 +748,26 @@ export function MailbotTab() {
         {/* ── Email Template ─────────────────────────────────────────── */}
         <Card className="border border-border/40 bg-card/60 backdrop-blur-md">
           <CardHeader>
-            <div className="flex items-center gap-2.5">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-500">
-                <Sparkles className="size-4.5" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-500">
+                  <Sparkles className="size-4.5" />
+                </div>
+                <div>
+                  <CardTitle>Job Application Template</CardTitle>
+                  <CardDescription>
+                    Use <code className="text-orange-400 bg-orange-500/10 px-1 rounded text-[11px]">{"{company}"}</code> in the body — it auto-fills with the company name from the email domain.
+                  </CardDescription>
+                </div>
               </div>
-              <div>
-                <CardTitle>Job Application Template</CardTitle>
-                <CardDescription>
-                  Use <code className="text-orange-400 bg-orange-500/10 px-1 rounded text-[11px]">{"{company}"}</code> in the body — it auto-fills with the company name from the email domain.
-                </CardDescription>
-              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResetTemplate}
+                className="text-xs h-8 gap-1.5 border-dashed"
+              >
+                <RefreshCw className="size-3" /> Reset default template
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -356,6 +845,7 @@ export function MailbotTab() {
                       <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground"><div className="flex items-center gap-1.5"><AtSign className="size-3" />Email</div></th>
                       <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground"><div className="flex items-center gap-1.5"><Clock className="size-3" />Sent At</div></th>
                       <th className="text-left px-3 py-2.5 font-semibold text-muted-foreground">Status</th>
+                      <th className="text-right px-3 py-2.5 font-semibold text-muted-foreground">Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -377,6 +867,17 @@ export function MailbotTab() {
                               <CheckCircle2 className="size-3" /> Sent
                             </Badge>
                           )}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleDeleteDomainLog(entry.domain)}
+                            title="Delete entry (resets duplicate guard)"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </Button>
                         </td>
                       </tr>
                     ))}
@@ -449,7 +950,7 @@ export function MailbotTab() {
                 { icon: Mail, label: "Configure Gmail credentials above" },
                 { icon: FileText, label: "Upload your resume PDF once" },
                 { icon: Sparkles, label: "Edit your HTML email template" },
-                { icon: AtSign, label: "Click ✉️ Send Mail on any LinkedIn post or job card with an HR email" },
+                { icon: Send, label: "Enter HR emails in the Direct Mailer to apply directly" },
                 { icon: ShieldCheck, label: "Duplicate Guard blocks re-sending to the same company domain" },
                 { icon: MailCheck, label: "Every send is logged here with timestamp" },
               ].map((step, i) => (

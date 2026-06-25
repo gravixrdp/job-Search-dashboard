@@ -21,7 +21,7 @@ const defaultGCPConfig: GCPConfig = {
   spreadsheetId: "",
 }
 
-const defaultEmailTemplate = `<html><body style="font-family: Arial, sans-serif; font-size: 14px; color: #1a1a1a; line-height: 1.6;">
+export const defaultEmailTemplate = `<html><body style="font-family: Arial, sans-serif; font-size: 14px; color: #1a1a1a; line-height: 1.6;">
 
 <p>Dear Hiring Team,</p>
 
@@ -77,7 +77,7 @@ Regards,<br/>
 
 </body></html>`;
 
-const defaultMailbotConfig: MailbotConfig = {
+export const defaultMailbotConfig: MailbotConfig = {
   gmailUser: "",
   gmailPass: "",
   emailSubject: "Application for DevOps Engineer Role | Vishal Gurjar | GCP | AWS | Kubernetes | Terraform | CI/CD",
@@ -180,12 +180,12 @@ export async function getResumeInfo(): Promise<{ name: string; size: number; has
   }
 }
 
-export async function sendApplicationEmail(to: string, company: string, subject: string, body: string): Promise<{ success: boolean; error?: string }> {
+export async function sendApplicationEmail(to: string, company: string, subject: string, body: string, force?: boolean): Promise<{ success: boolean; error?: string }> {
   try {
     const response = await fetch("/api/mailbot/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to, company, subject, body }),
+      body: JSON.stringify({ to, company, subject, body, force }),
     })
     return (await response.json()) as { success: boolean; error?: string }
   } catch (e) {
@@ -210,6 +210,15 @@ export async function clearSentLog(): Promise<{ success: boolean; error?: string
     return (await response.json()) as { success: boolean; error?: string }
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Failed to clear log" }
+  }
+}
+
+export async function deleteFromSentLog(domain: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch(`/api/mailbot/sent-log?domain=${encodeURIComponent(domain)}`, { method: "DELETE" })
+    return (await response.json()) as { success: boolean; error?: string }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed to delete entry" }
   }
 }
 

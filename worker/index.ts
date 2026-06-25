@@ -846,7 +846,7 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
 
   if (path === "/api/mailbot/send" && method === "POST") {
     try {
-      const body = await getBody<{ to: string; company: string; subject: string; body: string }>(req)
+      const body = await getBody<{ to: string; company: string; subject: string; body: string; force?: boolean }>(req)
       if (!body.to || !body.company || !body.subject || !body.body) {
         return error("To email, company name, subject, and body are required")
       }
@@ -866,7 +866,7 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
 
       // ── Duplicate domain check ───────────────────────────────────────
       const domain = body.to.split("@")[1]?.toLowerCase() || ""
-      if (domain) {
+      if (domain && !body.force) {
         const existing = await env.DB.prepare(
           "SELECT email, sent_at FROM sent_log WHERE domain = ? LIMIT 1"
         ).bind(domain).first() as { email: string; sent_at: string } | null
@@ -930,7 +930,12 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
 
   if (path === "/api/mailbot/sent-log" && method === "DELETE") {
     try {
-      await env.DB.exec("DELETE FROM sent_log")
+      const domain = url.searchParams.get("domain")
+      if (domain) {
+        await env.DB.prepare("DELETE FROM sent_log WHERE domain = ?").bind(domain.toLowerCase()).run()
+      } else {
+        await env.DB.exec("DELETE FROM sent_log")
+      }
       return json({ success: true })
     } catch (e) {
       return error(e instanceof Error ? e.message : "Failed to clear sent log", 500)
