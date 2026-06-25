@@ -1,6 +1,6 @@
 // Configuration Store - Server-side (D1) with local memory cache
 
-import type { AppConfig, ApifyConfig, GCPConfig } from "@/types"
+import type { AppConfig, ApifyConfig, GCPConfig, MailbotConfig } from "@/types"
 
 const defaultApifyConfig: ApifyConfig = {
   apiToken: "",
@@ -21,6 +21,17 @@ const defaultGCPConfig: GCPConfig = {
   spreadsheetId: "",
 }
 
+const defaultMailbotConfig: MailbotConfig = {
+  telegramBotToken: "",
+  telegramChatId: "",
+  imapHost: "",
+  imapPort: "993",
+  imapUser: "",
+  imapPassword: "",
+  forwardFilter: "",
+  checkInterval: "5",
+}
+
 // Local memory cache
 let cachedConfig: AppConfig | null = null
 
@@ -29,6 +40,7 @@ export function getConfig(): AppConfig {
   return {
     apify: { ...defaultApifyConfig },
     gcp: { ...defaultGCPConfig },
+    mailbot: { ...defaultMailbotConfig },
   }
 }
 
@@ -39,11 +51,13 @@ export async function loadConfigFromServer(): Promise<AppConfig> {
     const data = await response.json() as {
       apify: Record<string, string>
       gcp: { serviceAccountKey: string; spreadsheetId: string }
+      mailbot: Record<string, string>
     }
 
     const config: AppConfig = {
       apify: { ...defaultApifyConfig, ...data.apify },
       gcp: { ...defaultGCPConfig, ...data.gcp },
+      mailbot: { ...defaultMailbotConfig, ...data.mailbot },
     }
 
     cachedConfig = config
@@ -61,6 +75,7 @@ export async function saveConfig(config: AppConfig): Promise<void> {
     body: JSON.stringify({
       apify: config.apify,
       gcp: config.gcp,
+      mailbot: config.mailbot,
     }),
   })
 
@@ -80,6 +95,39 @@ export async function updateGCPConfig(updates: Partial<GCPConfig>): Promise<GCPC
   const newGCPConfig = { ...config.gcp, ...updates }
   await saveConfig({ ...config, gcp: newGCPConfig })
   return newGCPConfig
+}
+
+export async function updateMailbotConfig(updates: Partial<MailbotConfig>): Promise<MailbotConfig> {
+  const config = getConfig()
+  const newMailbotConfig = { ...config.mailbot, ...updates }
+  await saveConfig({ ...config, mailbot: newMailbotConfig })
+  return newMailbotConfig
+}
+
+export async function testTelegramConnection(telegramBotToken: string, telegramChatId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch("/api/mailbot/test-telegram", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegramBotToken, telegramChatId }),
+    })
+    return (await response.json()) as { success: boolean; error?: string }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Connection failed" }
+  }
+}
+
+export async function testIMAPConnection(imapHost: string, imapPort: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const response = await fetch("/api/mailbot/test-imap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imapHost, imapPort }),
+    })
+    return (await response.json()) as { success: boolean; error?: string }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Connection failed" }
+  }
 }
 
 export async function testGCPConnection(serviceAccountKey: string, spreadsheetId: string): Promise<{ success: boolean; error?: string }> {

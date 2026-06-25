@@ -90,9 +90,21 @@ export interface GCPConfig {
   spreadsheetId: string
 }
 
+export interface MailbotConfig {
+  telegramBotToken: string
+  telegramChatId: string
+  imapHost: string
+  imapPort: string
+  imapUser: string
+  imapPassword: string
+  forwardFilter: string
+  checkInterval: string
+}
+
 export interface AppConfig {
   apify: ApifyConfig
   gcp: GCPConfig
+  mailbot: MailbotConfig
 }
 
 // ============================================================================

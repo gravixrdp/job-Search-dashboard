@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Search, UserRoundSearch, Settings, Briefcase } from "lucide-react"
+import { Search, UserRoundSearch, Settings, Briefcase, Bot } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ModeToggle } from "@/components/mode-toggle"
@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { JobSearchTab } from "@/components/dashboard/job-search-tab"
 import { SocialListeningTab } from "@/components/dashboard/social-listening-tab"
 import { ConfigTab } from "@/components/dashboard/config-tab"
+import { MailbotTab } from "@/components/dashboard/mailbot-tab"
 
 export function App() {
   const [activeTab, setActiveTab] = useState("jobs")
@@ -40,6 +41,10 @@ export function App() {
               <UserRoundSearch className="size-4" />
               Social Listening
             </TabsTrigger>
+            <TabsTrigger value="mailbot" className="gap-2">
+              <Bot className="size-4" />
+              Mailbot
+            </TabsTrigger>
             <TabsTrigger value="config" className="gap-2">
               <Settings className="size-4" />
               Configuration
@@ -51,6 +56,9 @@ export function App() {
           </TabsContent>
           <TabsContent value="social">
             <SocialListeningTab />
+          </TabsContent>
+          <TabsContent value="mailbot">
+            <MailbotTab />
           </TabsContent>
           <TabsContent value="config">
             <ConfigTab />

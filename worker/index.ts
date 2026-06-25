@@ -2,6 +2,7 @@
 // Serves the React SPA and handles all API routes with D1 + Google Sheets backup
 
 import type { D1Database, ExecutionContext } from "cloudflare:workers"
+import { connect } from "cloudflare:sockets"
 
 export interface Env {
   DB: D1Database
@@ -210,6 +211,17 @@ async function wipeSheets(spreadsheetId: string, serviceAccountKey: string): Pro
     await sheetsFetch(spreadsheetId, token, `/values/LinkedIn_Hiring_Posts!A2:J:clear`, { method: "POST" })
   } catch (e) {
     console.error("Sheets wipe failed:", e)
+  }
+}
+
+async function testImapConnection(host: string, port: number): Promise<{ success: boolean; error?: string }> {
+  try {
+    const socket = connect({ hostname: host, port: port })
+    await socket.opened
+    await socket.close()
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "TCP connection failed" }
   }
 }
 
@@ -493,6 +505,20 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
       const hasToken = !!effectiveToken
       // Check if CF_API_TOKEN is configured for secret management
       const canManageSecrets = !!(env.CF_API_TOKEN && env.CF_ACCOUNT_ID)
+
+      // Parse and mask Mailbot Config
+      const mailbotParsed = config.mailbot_config ? JSON.parse(config.mailbot_config) : {}
+      const mailbot = {
+        telegramBotToken: mailbotParsed.telegramBotToken ? "***" : "",
+        telegramChatId: mailbotParsed.telegramChatId || "",
+        imapHost: mailbotParsed.imapHost || "",
+        imapPort: mailbotParsed.imapPort || "993",
+        imapUser: mailbotParsed.imapUser || "",
+        imapPassword: mailbotParsed.imapPassword ? "***" : "",
+        forwardFilter: mailbotParsed.forwardFilter || "",
+        checkInterval: mailbotParsed.checkInterval || "5",
+      }
+
       return json({
         apify: {
           apiToken: hasToken ? "***" : "",
@@ -504,6 +530,7 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
           serviceAccountKey: config.gcp_service_account_key || "",
           spreadsheetId: config.gcp_spreadsheet_id || "",
         },
+        mailbot,
       })
     } catch (e) {
       return error(e instanceof Error ? e.message : "Failed to fetch config", 500)
@@ -512,7 +539,7 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
 
   if (path === "/api/config" && method === "PUT") {
     try {
-      const body = await getBody<{ apify?: Record<string, string>; gcp?: Record<string, string> }>(req)
+      const body = await getBody<{ apify?: Record<string, string>; gcp?: Record<string, string>; mailbot?: Record<string, string> }>(req)
       const now = new Date().toISOString()
 
       if (body.apify) {
@@ -538,9 +565,86 @@ async function handleApi(url: URL, req: Request, env: Env): Promise<Response> {
         }
       }
 
+      if (body.mailbot) {
+        // Load existing config to check for masking
+        const existingRow = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_config").first() as { value: string } | null
+        const existingMailbot = existingRow?.value ? JSON.parse(existingRow.value) : {}
+        
+        const newMailbot = {
+          telegramBotToken: body.mailbot.telegramBotToken === "***" ? (existingMailbot.telegramBotToken || "") : (body.mailbot.telegramBotToken || ""),
+          telegramChatId: body.mailbot.telegramChatId || "",
+          imapHost: body.mailbot.imapHost || "",
+          imapPort: body.mailbot.imapPort || "993",
+          imapUser: body.mailbot.imapUser || "",
+          imapPassword: body.mailbot.imapPassword === "***" ? (existingMailbot.imapPassword || "") : (body.mailbot.imapPassword || ""),
+          forwardFilter: body.mailbot.forwardFilter || "",
+          checkInterval: body.mailbot.checkInterval || "5",
+        }
+
+        await env.DB.prepare(
+          `INSERT INTO config (key, value, updated_at) VALUES (?, ?, ?)
+           ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`
+        ).bind("mailbot_config", JSON.stringify(newMailbot), now).run()
+      }
+
       return json({ success: true })
     } catch (e) {
       return error(e instanceof Error ? e.message : "Failed to save config", 500)
+    }
+  }
+
+  // ── Mailbot Test Routes ──────────────────────────────────────────────────
+  if (path === "/api/mailbot/test-telegram" && method === "POST") {
+    try {
+      const body = await getBody<{ telegramBotToken: string; telegramChatId: string }>(req)
+      let token = body.telegramBotToken
+      const chatId = body.telegramChatId
+
+      if (token === "***") {
+        const row = await env.DB.prepare("SELECT value FROM config WHERE key = ?").bind("mailbot_config").first() as { value: string } | null
+        const mailbot = row?.value ? JSON.parse(row.value) : {}
+        token = mailbot.telegramBotToken || ""
+      }
+
+      if (!token || !chatId) {
+        return error("Bot Token and Chat ID are required to test the connection")
+      }
+
+      const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: "🤖 *gravix-job Mailbot Connection Test*\n\nYour Telegram bot configuration is working correctly! 🎉",
+          parse_mode: "Markdown",
+        }),
+      })
+
+      if (res.ok) {
+        return json({ success: true })
+      } else {
+        const errText = await res.text()
+        return json({ success: false, error: `Telegram API returned: ${errText}` })
+      }
+    } catch (e) {
+      return json({ success: false, error: e instanceof Error ? e.message : "Connection failed" })
+    }
+  }
+
+  if (path === "/api/mailbot/test-imap" && method === "POST") {
+    try {
+      const body = await getBody<{ imapHost: string; imapPort: string }>(req)
+      const host = body.imapHost
+      const port = parseInt(body.imapPort, 10)
+
+      if (!host || isNaN(port)) {
+        return error("IMAP Host and valid Port are required to test the connection")
+      }
+
+      const check = await testImapConnection(host, port)
+      return json(check)
+    } catch (e) {
+      return json({ success: false, error: e instanceof Error ? e.message : "Connection failed" })
     }
   }
 
